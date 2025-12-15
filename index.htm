@@ -8,6 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.1.3/TweenMax.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/zarocknz/javascript-winwheel@master/Winwheel.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     .login { 
       max-width: 360px; 
@@ -232,6 +233,25 @@
     <div class="row" style="justify-content: space-between; margin-bottom: 20px;">
       <h2 style="margin: 0;">Admin Panel</h2>
       <button id="logoutBtn">Logout</button>
+    </div>
+
+    <!-- EMAIL NOTIFICATION SECTION -->
+    <div style="max-width: 500px; margin: 20px auto; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background: #fff3cd;">
+      <h3>📧 Email Notifications</h3>
+      <label>EmailJS Service ID</label>
+      <input type="text" id="emailServiceId" placeholder="Your EmailJS Service ID">
+      <label>EmailJS Template ID</label>
+      <input type="text" id="emailTemplateId" placeholder="Your EmailJS Template ID">
+      <label>EmailJS Public Key</label>
+      <input type="text" id="emailPublicKey" placeholder="Your EmailJS Public Key">
+      <label>Recipient Email</label>
+      <input type="email" id="recipientEmail" placeholder="depace.newa@gmail.com" value="depace.newa@gmail.com">
+      <button id="saveEmailConfig" style="width:100%; margin-top: 8px; background: #f39c12;">Save Email Config</button>
+      <button id="testEmail" style="width:100%; margin-top: 8px; background: #27ae60;">Send Test Email</button>
+      <p id="emailStatus" class="small" style="margin-top: 8px; text-align: center;"></p>
+      <p class="small" style="margin-top: 8px; background: #fff; padding: 8px; border-radius: 4px;">
+        <strong>Setup:</strong> Get free EmailJS account at <a href="https://www.emailjs.com/" target="_blank">emailjs.com</a>. Create a service and template, then enter credentials above.
+      </p>
     </div>
 
     <!-- GITHUB SETTINGS SECTION -->

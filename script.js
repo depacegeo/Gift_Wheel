@@ -10,6 +10,14 @@ let githubConfig = {
   repo: null
 };
 
+// EmailJS configuration
+let emailConfig = {
+  serviceId: null,
+  templateId: null,
+  publicKey: null,
+  recipientEmail: 'depace.newa@gmail.com'
+};
+
 // Load GitHub config from localStorage
 function loadGithubConfig() {
   const saved = localStorage.getItem('githubConfig');
@@ -22,6 +30,65 @@ function loadGithubConfig() {
 function saveGithubConfig(config) {
   githubConfig = config;
   localStorage.setItem('githubConfig', JSON.stringify(config));
+}
+
+// Load EmailJS config from localStorage
+function loadEmailConfig() {
+  const saved = localStorage.getItem('emailConfig');
+  if (saved) {
+    emailConfig = JSON.parse(saved);
+  }
+}
+
+// Save EmailJS config to localStorage
+function saveEmailConfig(config) {
+  emailConfig = config;
+  localStorage.setItem('emailConfig', JSON.stringify(config));
+}
+
+// Send email notification using EmailJS
+async function sendPickEmail(giver, receiver) {
+  loadEmailConfig();
+  
+  if (!emailConfig.serviceId || !emailConfig.templateId || !emailConfig.publicKey) {
+    console.warn('EmailJS not configured, skipping email notification');
+    return false;
+  }
+  
+  try {
+    console.log('Sending email notification...');
+    
+    // Initialize EmailJS if not already done
+    if (typeof emailjs !== 'undefined') {
+      emailjs.init(emailConfig.publicKey);
+      
+      const templateParams = {
+        to_email: emailConfig.recipientEmail,
+        giver_name: giver,
+        receiver_name: receiver,
+        timestamp: new Date().toLocaleString('en-US', { 
+          timeZone: 'Asia/Kathmandu',
+          dateStyle: 'full',
+          timeStyle: 'long'
+        })
+      };
+      
+      await emailjs.send(
+        emailConfig.serviceId,
+        emailConfig.templateId,
+        templateParams
+      );
+      
+      console.log('✓ Email sent successfully to', emailConfig.recipientEmail);
+      return true;
+    } else {
+      console.error('EmailJS library not loaded');
+      return false;
+    }
+  } catch (err) {
+    console.error('Failed to send email:', err);
+    return false;
+  }
 }
 
 // GitHub API functions with retry logic
@@ -247,6 +314,7 @@ const params = new URLSearchParams(window.location.search);
 const qrToken = params.get('code');
 const qrEmployee = params.get('employee');
 const ghParam = params.get('gh');
+const emParam = params.get('em');
 
 // If GitHub config is in URL (QR scan on mobile), load it
 if (ghParam) {
@@ -267,6 +335,29 @@ if (ghParam) {
     }
   } catch (err) {
     console.error('✗ Failed to parse GitHub config from QR:', err);
+  }
+}
+
+// If Email config is in URL (QR scan on mobile), load it
+if (emParam) {
+  try {
+    console.log('Email param received');
+    const decoded = JSON.parse(atob(emParam));
+    console.log('Email config decoded successfully');
+    if (decoded.s && decoded.t && decoded.k && decoded.e) {
+      saveEmailConfig({
+        serviceId: decoded.s,
+        templateId: decoded.t,
+        publicKey: decoded.k,
+        recipientEmail: decoded.e
+      });
+      console.log('✓ Email config loaded from QR code and saved');
+      console.log('Email recipient:', decoded.e);
+    } else {
+      console.error('Decoded Email config missing required fields');
+    }
+  } catch (err) {
+    console.error('✗ Failed to parse Email config from QR:', err);
   }
 }
 
@@ -321,6 +412,17 @@ function initAdminPanel() {
   const newEmployeeInput = document.getElementById('newEmployeeInput');
   const addEmployeeBtn = document.getElementById('addEmployeeBtn');
 
+  // Load EmailJS config into form
+  loadEmailConfig();
+  if (emailConfig.serviceId) {
+    document.getElementById('emailServiceId').value = emailConfig.serviceId;
+    document.getElementById('emailTemplateId').value = emailConfig.templateId || '';
+    document.getElementById('emailPublicKey').value = emailConfig.publicKey || '';
+    document.getElementById('recipientEmail').value = emailConfig.recipientEmail || 'depace.newa@gmail.com';
+    document.getElementById('emailStatus').textContent = '✓ Email configured';
+    document.getElementById('emailStatus').style.color = 'green';
+  }
+
   // Load GitHub config into form
   loadGithubConfig();
   if (githubConfig.token) {
@@ -333,6 +435,38 @@ function initAdminPanel() {
 
   // Load and display current employees
   renderEmployeesList();
+
+  // EmailJS config handlers
+  document.getElementById('saveEmailConfig').addEventListener('click', () => {
+    const serviceId = document.getElementById('emailServiceId').value.trim();
+    const templateId = document.getElementById('emailTemplateId').value.trim();
+    const publicKey = document.getElementById('emailPublicKey').value.trim();
+    const recipientEmail = document.getElementById('recipientEmail').value.trim();
+
+    if (!serviceId || !templateId || !publicKey || !recipientEmail) {
+      alert('Please fill all email fields');
+      return;
+    }
+
+    saveEmailConfig({ serviceId, templateId, publicKey, recipientEmail });
+    document.getElementById('emailStatus').textContent = '✓ Email config saved!';
+    document.getElementById('emailStatus').style.color = 'green';
+  });
+
+  document.getElementById('testEmail').addEventListener('click', async () => {
+    const statusEl = document.getElementById('emailStatus');
+    statusEl.textContent = 'Sending test email...';
+    statusEl.style.color = 'blue';
+
+    const success = await sendPickEmail('Test Giver', 'Test Receiver');
+    if (success) {
+      statusEl.textContent = '✓ Test email sent successfully!';
+      statusEl.style.color = 'green';
+    } else {
+      statusEl.textContent = '✗ Test email failed. Check console for errors.';
+      statusEl.style.color = 'red';
+    }
+  });
 
   // GitHub config handlers
   document.getElementById('saveGithubConfig').addEventListener('click', async () => {
@@ -554,16 +688,26 @@ function renderGrid(baseUrl, tokens) {
   grid.innerHTML = '';
   employeesList.forEach(name => {
     const token = tokens[name];
-    // Include GitHub config in URL for mobile sync
+    // Include GitHub and Email configs in URL for mobile sync
     let url = `${baseUrl}?code=${encodeURIComponent(token)}&employee=${encodeURIComponent(name)}`;
+    
     if (githubConfig.token && githubConfig.username && githubConfig.repo) {
       const configStr = btoa(JSON.stringify({
         t: githubConfig.token,
         u: githubConfig.username,
         r: githubConfig.repo
       }));
-      // btoa produces URL-safe base64, but we should still encode it for URL safety
       url += `&gh=${configStr}`;
+    }
+    
+    if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
+      const emailStr = btoa(JSON.stringify({
+        s: emailConfig.serviceId,
+        t: emailConfig.templateId,
+        k: emailConfig.publicKey,
+        e: emailConfig.recipientEmail
+      }));
+      url += `&em=${emailStr}`;
     }
     const card = document.createElement('div');
     card.className = 'card print-area';
@@ -1015,6 +1159,15 @@ async function addLogEntry(giver, receiver) {
   if (!exists) {
     currentPicks.push(entry);
     console.log('New pick added. Total picks now:', currentPicks.length);
+    
+    // Send email notification FIRST
+    console.log('📧 Sending email notification...');
+    const emailSent = await sendPickEmail(giver, receiver);
+    if (emailSent) {
+      console.log('✓ Email notification sent successfully');
+    } else {
+      console.warn('⚠ Email notification failed or not configured');
+    }
     
     // Save to both localStorage and GitHub
     const saved = await savePicksToStorage(currentPicks);
