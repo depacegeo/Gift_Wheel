@@ -136,7 +136,14 @@ async function loadPicksFromStorage() {
 
 // Save picks to GitHub and localStorage
 async function savePicksToStorage(picks) {
+  // Ensure picks is an array
+  if (!Array.isArray(picks)) {
+    console.error('savePicksToStorage called with invalid data:', picks);
+    return;
+  }
+  
   localStorage.setItem('pickLogs', JSON.stringify(picks));
+  console.log('Picks saved to localStorage:', picks);
   
   loadGithubConfig();
   if (githubConfig.token) {
@@ -343,6 +350,10 @@ function initAdminPanel() {
 
   document.getElementById('adminDownloadPicks').addEventListener('click', async () => {
     const picks = await loadPicksFromStorage();
+    if (!picks || picks.length === 0) {
+      alert('No picks available to download. Check if picks have been recorded.');
+      return;
+    }
     downloadPicks(picks);
   });
 
@@ -784,12 +795,19 @@ function generateClosedLoop(list) {
 // --- Logging & export ---
 async function addLogEntry(giver, receiver) {
   const entry = { timeISO: new Date().toISOString(), giver, receiver };
-  // prevent duplicates for same giver
-  const exists = pickLogs.some(e => e.giver === giver);
+  
+  // Load current picks from storage to ensure we don't lose data
+  const currentPicks = await loadPicksFromStorage();
+  
+  // Prevent duplicates for same giver
+  const exists = currentPicks.some(e => e.giver === giver);
   if (!exists) {
-    pickLogs.push(entry);
+    currentPicks.push(entry);
     // Save to both localStorage and GitHub
-    await savePicksToStorage(pickLogs);
+    await savePicksToStorage(currentPicks);
+    
+    // Also update the global pickLogs
+    pickLogs = currentPicks;
   }
   updateLogStatus();
 }
