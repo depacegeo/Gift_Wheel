@@ -515,6 +515,8 @@ let pickLogs = []; // array of { timeISO, giver, receiver }
 
 // Show rules modal popup when QR is scanned
 function initRulesPanel() {
+  console.log('initRulesPanel called');
+  
   // Get QR parameters
   const params = new URLSearchParams(window.location.search);
   const qrEmployee = params.get('employee');
@@ -525,31 +527,65 @@ function initRulesPanel() {
   
   // Validate employee exists
   if (!qrEmployee || !employeesList.includes(qrEmployee)) {
+    console.error('Employee not found:', qrEmployee);
     alert(`Employee "${qrEmployee}" not found in the system. Please check the QR code.`);
     return;
   }
   
   // Display employee name in rules modal
-  document.getElementById('rulesEmployeeName').textContent = qrEmployee;
+  const rulesEmployeeEl = document.getElementById('rulesEmployeeName');
+  if (rulesEmployeeEl) {
+    rulesEmployeeEl.textContent = qrEmployee;
+  } else {
+    console.error('rulesEmployeeName element not found');
+    return;
+  }
 
   // Show the modal
-  document.getElementById('rulesModalOverlay').classList.add('show');
-  document.getElementById('rulesModal').classList.add('show');
+  const overlay = document.getElementById('rulesModalOverlay');
+  const modal = document.getElementById('rulesModal');
+  
+  if (!overlay || !modal) {
+    console.error('Modal elements not found');
+    return;
+  }
+  
+  overlay.classList.add('show');
+  modal.classList.add('show');
+  console.log('Modal shown');
 
-  // Add event listener for continue button
+  // Remove existing event listeners by cloning elements
   const continueBtn = document.getElementById('continueToWheel');
   const closeBtn = document.getElementById('closeRulesModal');
-  const overlay = document.getElementById('rulesModalOverlay');
-
-  const closeModal = () => {
-    document.getElementById('rulesModalOverlay').classList.remove('show');
-    document.getElementById('rulesModal').classList.remove('show');
-    initWheelApp();
-  };
-
-  continueBtn.addEventListener('click', closeModal);
-  closeBtn.addEventListener('click', closeModal);
-  overlay.addEventListener('click', closeModal);
+  
+  if (continueBtn) {
+    const newContinueBtn = continueBtn.cloneNode(true);
+    continueBtn.parentNode.replaceChild(newContinueBtn, continueBtn);
+    
+    newContinueBtn.addEventListener('click', () => {
+      console.log('Continue button clicked');
+      overlay.classList.remove('show');
+      modal.classList.remove('show');
+      initWheelApp();
+    });
+  }
+  
+  if (closeBtn) {
+    const newCloseBtn = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+    
+    newCloseBtn.addEventListener('click', () => {
+      console.log('Close button clicked');
+      overlay.classList.remove('show');
+      modal.classList.remove('show');
+    });
+  }
+  
+  overlay.addEventListener('click', () => {
+    console.log('Overlay clicked');
+    overlay.classList.remove('show');
+    modal.classList.remove('show');
+  });
 }
 
 function initWheelApp() {
