@@ -138,9 +138,11 @@ async function loadPicksFromStorage() {
 async function savePicksToStorage(picks) {
   localStorage.setItem('pickLogs', JSON.stringify(picks));
   
+  loadGithubConfig();
   if (githubConfig.token) {
     try {
       await githubApiCall('PUT', 'picks.json', picks);
+      console.log('Picks synced to GitHub successfully');
     } catch (err) {
       console.log('Failed to sync picks to GitHub:', err.message);
     }
@@ -332,6 +334,31 @@ function initAdminPanel() {
 
   document.getElementById('printSheet').addEventListener('click', () => window.print());
   document.getElementById('downloadCSV').addEventListener('click', downloadCSV);
+
+  // Picks management handlers
+  document.getElementById('adminRefreshPicks').addEventListener('click', async () => {
+    const picks = await loadPicksFromStorage();
+    renderAdminPicksList(picks);
+  });
+
+  document.getElementById('adminDownloadPicks').addEventListener('click', async () => {
+    const picks = await loadPicksFromStorage();
+    downloadPicks(picks);
+  });
+
+  document.getElementById('adminClearPicks').addEventListener('click', () => {
+    if (confirm('Are you sure you want to clear all picks? This cannot be undone.')) {
+      localStorage.setItem('pickLogs', JSON.stringify([]));
+      savePicksToStorage([]);
+      renderAdminPicksList([]);
+      alert('All picks cleared and synced to GitHub');
+    }
+  });
+
+  // Load and display picks on admin login
+  loadPicksFromStorage().then(picks => {
+    renderAdminPicksList(picks);
+  });
 }
 
 function renderEmployeesList() {
@@ -352,6 +379,44 @@ function renderEmployeesList() {
     `;
     listContainer.appendChild(item);
   });
+}
+
+function renderAdminPicksList(picks) {
+  const listContainer = document.getElementById('adminPicksList');
+  
+  if (!picks || picks.length === 0) {
+    listContainer.innerHTML = '<p style="text-align:center; color:#999;">No picks recorded yet</p>';
+    return;
+  }
+
+  listContainer.innerHTML = '';
+  picks.forEach(pick => {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding: 8px; margin: 6px 0; background: white; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;';
+    const time = new Date(pick.timeISO).toLocaleString();
+    item.textContent = `${time} | ${pick.giver} → ${pick.receiver}`;
+    listContainer.appendChild(item);
+  });
+}
+
+function downloadPicks(picks) {
+  if (!picks || picks.length === 0) {
+    alert('No picks to download');
+    return;
+  }
+  
+  const content = picks
+    .map(e => `${e.timeISO} | ${e.giver} -> ${e.receiver}`)
+    .join('\n');
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'picks.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function removeEmployee(index) {
@@ -510,16 +575,28 @@ function buildWheel() {
 }
 
 function getSegmentColor(index, total) {
-  // Orange-Blue-White gradient colors
+  // Vibrant, colorful palette with great contrast
   const colors = [
-    '#FF8C00',  // Dark Orange
-    '#FFA500',  // Orange
-    '#FFB347',  // Light Orange
-    '#87CEEB',  // Sky Blue
-    '#4682B4',  // Steel Blue
-    '#1E90FF',  // Dodger Blue
-    '#FFFFFF',  // White
-    '#F0F8FF'   // Alice Blue (light)
+    '#FF6B6B',  // Red
+    '#4ECDC4',  // Turquoise
+    '#FFE66D',  // Yellow
+    '#95E1D3',  // Mint
+    '#FF8C42',  // Orange
+    '#6BCB77',  // Green
+    '#4D96FF',  // Blue
+    '#9D84B7',  // Purple
+    '#FF6B9D',  // Pink
+    '#A8D8EA',  // Light Blue
+    '#FF6F61',  // Coral
+    '#F7DC6F',  // Golden Yellow
+    '#BB8FCE',  // Light Purple
+    '#85C1E2',  // Sky Blue
+    '#F8B88B',  // Peach
+    '#52C9A8',  // Teal
+    '#FF85B3',  // Hot Pink
+    '#FFD93D',  // Bright Yellow
+    '#6BCB77',  // Forest Green
+    '#D4A5FF'   // Lavender
   ];
   return colors[index % colors.length];
 }
@@ -530,9 +607,25 @@ function drawPointer() {
   
   // Draw arrow pointer outside wheel at top, pointing down toward wheel
   ctx.save();
-  ctx.fillStyle = '#FF0000';
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 3;
+  
+  // Draw shadow for 3D effect
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.beginPath();
+  ctx.moveTo(250, 18);
+  ctx.lineTo(233, 52);
+  ctx.lineTo(267, 52);
+  ctx.closePath();
+  ctx.fill();
+  
+  // Draw main pointer with gradient
+  const gradient = ctx.createLinearGradient(250, 15, 250, 50);
+  gradient.addColorStop(0, '#FFD700');    // Gold top
+  gradient.addColorStop(0.5, '#FFA500');  // Orange middle
+  gradient.addColorStop(1, '#FF8C00');    // Dark orange bottom
+  
+  ctx.fillStyle = gradient;
+  ctx.strokeStyle = '#333333';
+  ctx.lineWidth = 4;
   
   ctx.beginPath();
   ctx.moveTo(250, 15);   // Top point (outside wheel)
@@ -542,6 +635,16 @@ function drawPointer() {
   
   ctx.fill();
   ctx.stroke();
+  
+  // Add shine effect on top
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.beginPath();
+  ctx.moveTo(250, 18);
+  ctx.lineTo(240, 38);
+  ctx.lineTo(260, 38);
+  ctx.closePath();
+  ctx.fill();
+  
   ctx.restore();
 }
 
@@ -627,7 +730,7 @@ async function attemptAssignment(selectedName) {
   resultEl.innerText = `🎁 ${currentEmployee} will gift to ${selectedName}!`;
   resultEl.style.color = 'green';
   document.getElementById('startSpin').disabled = true;
-  addLogEntry(currentEmployee, selectedName);
+  await addLogEntry(currentEmployee, selectedName);
   return;
 }
 
@@ -663,22 +766,6 @@ function updateLogStatus() {
 }
 
 // Download log as a text file
-const downloadBtn = document.getElementById('downloadLog');
-if (downloadBtn) {
-  downloadBtn.addEventListener('click', () => {
-    const content = pickLogs
-      .map(e => `${e.timeISO} | ${e.giver} -> ${e.receiver}`)
-      .join('\n');
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'picks.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
-}
+// Note: Only admin can download picks from admin panel
 
 

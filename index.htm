@@ -9,27 +9,123 @@
   <script src="https://cdn.jsdelivr.net/gh/zarocknz/javascript-winwheel@master/Winwheel.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    .login { max-width: 360px; margin: 40px auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
-    .panel { max-width: 960px; margin: 20px auto; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-    .card { border: 1px solid #ccc; border-radius: 8px; padding: 12px; text-align: center; }
+    .login { 
+      max-width: 360px; 
+      margin: 40px auto; 
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      padding: 30px; 
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(10px);
+    }
+    .panel { 
+      max-width: 960px; 
+      margin: 20px auto;
+    }
+    .grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+      gap: 16px; 
+    }
+    .card { 
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 12px; 
+      padding: 12px; 
+      text-align: center;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
     .card h3 { margin: 8px 0; }
-    .row { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
-    .small { font-size: 12px; color: #555; }
-    .actions { margin: 12px 0; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .row { 
+      display: flex; 
+      gap: 8px; 
+      align-items: center; 
+      justify-content: center; 
+      flex-wrap: wrap; 
+    }
+    .small { 
+      font-size: 12px; 
+      color: rgba(255, 255, 255, 0.8);
+    }
+    .actions { 
+      margin: 12px 0; 
+      display: flex; 
+      gap: 8px; 
+      justify-content: center; 
+      flex-wrap: wrap; 
+    }
     .print-area { page-break-inside: avoid; }
     .hidden { display:none; }
-    input[type=text], input[type=password] { width: 100%; padding: 8px; margin: 6px 0; box-sizing: border-box; }
+    input[type=text], input[type=password] { 
+      width: 100%; 
+      padding: 10px; 
+      margin: 6px 0; 
+      box-sizing: border-box;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+    input[type=text]:focus, input[type=password]:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+    }
     .url { font-size: 11px; word-break: break-all; }
-    .wheel-panel { max-width: 960px; margin: 20px auto; }
-    button { padding: 8px 12px; cursor: pointer; }
-    button:hover { opacity: 0.9; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .employee-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin: 6px 0; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; }
+    .wheel-panel { 
+      max-width: 960px; 
+      margin: 20px auto;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+    .employee-item { 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      padding: 10px 15px; 
+      margin: 6px 0; 
+      background: rgba(255, 255, 255, 0.8);
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      transition: all 0.3s ease;
+    }
+    .employee-item:hover {
+      background: rgba(255, 255, 255, 1);
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
     .employee-item span { flex: 1; }
-    .employee-item button { padding: 4px 8px; margin: 0; margin-left: 8px; background: #d9534f; }
-    .employee-item button:hover { background: #c9302c; }
-    label { display: block; margin-top: 8px; font-weight: bold; font-size: 12px; }
+    .employee-item button { 
+      padding: 6px 12px; 
+      margin: 0; 
+      margin-left: 8px; 
+      background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .employee-item button:hover { 
+      background: linear-gradient(135deg, #ff5252 0%, #ff1744 100%);
+      transform: scale(1.05);
+    }
+    label { 
+      display: block; 
+      margin-top: 8px; 
+      font-weight: bold; 
+      font-size: 12px;
+      color: rgba(0, 0, 0, 0.7);
+    }
   </style>
   <!--
     QR flow: open the page with parameters `?code=<uniqueToken>&employee=<Name>`.
@@ -105,6 +201,19 @@
       </div>
       <div class="grid" id="qrGrid"></div>
       <p class="small">Tip: Print the sheet and cut cards to distribute.</p>
+    </div>
+
+    <!-- PICKS MANAGEMENT SECTION -->
+    <div style="max-width: 800px; margin: 20px auto; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+      <h2>Gift Picks Log</h2>
+      <div class="row" style="justify-content: center; gap: 8px;">
+        <button id="adminRefreshPicks" style="background: #17a2b8;">Refresh from Storage</button>
+        <button id="adminDownloadPicks" style="background: #28a745;">Download Picks</button>
+        <button id="adminClearPicks" style="background: #dc3545;">Clear Picks</button>
+      </div>
+      <div id="adminPicksList" style="margin-top: 15px; max-height: 300px; overflow-y: auto; background: #f9f9f9; padding: 12px; border-radius: 4px; border: 1px solid #ddd;">
+        <p style="text-align: center; color: #999;">No picks yet</p>
+      </div>
     </div>
   </div>
 

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Secret Santa QR</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .login { max-width: 360px; margin: 40px auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+    .panel { max-width: 960px; margin: 20px auto; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card { border: 1px solid #ccc; border-radius: 8px; padding: 12px; text-align: center; }
+    .card h3 { margin: 8px 0; }
+    .row { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    .small { font-size: 12px; color: #555; }
+    .actions { margin: 12px 0; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .print-area { page-break-inside: avoid; }
+    .hidden { display:none; }
+    input[type=text], input[type=password] { width: 100%; padding: 8px; margin: 6px 0; }
+    button { padding: 8px 12px; }
+    .url { font-size: 11px; word-break: break-all; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <div class="login" id="loginBox">
+    <h2>Admin Login</h2>
+    <label>User ID</label>
+    <input type="text" id="adminUser" placeholder="User ID">
+    <label>Password</label>
+    <input type="password" id="adminPass" placeholder="Password">
+    <button id="loginBtn">Login</button>
+    <p id="loginMsg" class="small"></p>
+  </div>
+
+  <div class="panel hidden" id="adminPanel">
+    <h2>Printable QR Codes</h2>
+    <div class="row">
+      <label>Base URL:</label>
+      <input type="text" id="baseUrl" style="flex:1" placeholder="e.g., https://example.com/index.htm">
+      <button id="loadDefaultUrl">Use current</button>
+      <button id="logoutBtn" style="margin-left:auto;">Logout</button>
+    </div>
+    <div class="actions">
+      <button id="generateTokens">Generate Tokens</button>
+      <button id="reuseTokens">Reuse Existing Tokens</button>
+      <button id="printSheet">Print</button>
+      <button id="downloadCSV">Download CSV</button>
+    </div>
+    <div class="grid" id="qrGrid"></div>
+    <p class="small">Tip: Print the sheet and cut cards to distribute.</p>
+  </div>
+
+  <script>
+    const ADMIN_USER = 'geovest';
+    const ADMIN_PASS = 'geovestdec25';
+    const employees = ["Dipesh", "Safala", "Pramada", "Bikram", "Seren", "Neerjara", "Laxmi", "Suraj", "Dinesh", "Rojin", "Prabin", "Muna", "Jenisha", "Luzala", "Princika", "Aruna", "Monika", "Ronika", "Gagan", "Rahish","Saleel"];
+
+    const loginBtn = document.getElementById('loginBtn');
+    const loginMsg = document.getElementById('loginMsg');
+    const loginBox = document.getElementById('loginBox');
+    const adminPanel = document.getElementById('adminPanel');
+
+    loginBtn.addEventListener('click', () => {
+      const u = document.getElementById('adminUser').value.trim();
+      const p = document.getElementById('adminPass').value.trim();
+      if (u === ADMIN_USER && p === ADMIN_PASS) {
+        loginBox.classList.add('hidden');
+        adminPanel.classList.remove('hidden');
+        initAdmin();
+      } else {
+        loginMsg.textContent = 'Invalid credentials';
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      loginBox.classList.remove('hidden');
+      adminPanel.classList.add('hidden');
+      document.getElementById('adminUser').value = '';
+      document.getElementById('adminPass').value = '';
+      document.getElementById('loginMsg').textContent = '';
+      document.getElementById('qrGrid').innerHTML = '';
+      setTimeout(() => { window.location.href = 'index.htm'; }, 500);
+    });
+
+    function initAdmin() {
+      const baseUrlInput = document.getElementById('baseUrl');
+      document.getElementById('loadDefaultUrl').addEventListener('click', () => {
+        const loc = window.location;
+        const guess = loc.origin + loc.pathname.replace('admin.htm', 'index.htm');
+        baseUrlInput.value = guess;
+      });
+
+      document.getElementById('generateTokens').addEventListener('click', () => {
+        const base = baseUrlInput.value.trim();
+        if (!base) { alert('Enter base URL to generate.'); return; }
+        const tokens = generateTokens();
+        localStorage.setItem('qrTokens', JSON.stringify(tokens));
+        renderGrid(base, tokens);
+      });
+
+      document.getElementById('reuseTokens').addEventListener('click', () => {
+        const base = baseUrlInput.value.trim();
+        if (!base) { alert('Enter base URL to render.'); return; }
+        const saved = localStorage.getItem('qrTokens');
+        const tokens = saved ? JSON.parse(saved) : generateTokens();
+        renderGrid(base, tokens);
+      });
+
+      document.getElementById('printSheet').addEventListener('click', () => window.print());
+      document.getElementById('downloadCSV').addEventListener('click', downloadCSV);
+    }
+
+    function generateTokens() {
+      const tokens = {};
+      employees.forEach(name => {
+        tokens[name] = Math.random().toString(36).slice(2, 10);
+      });
+      return tokens;
+    }
+
+    function renderGrid(baseUrl, tokens) {
+      const grid = document.getElementById('qrGrid');
+      grid.innerHTML = '';
+      employees.forEach(name => {
+        const token = tokens[name];
+        const url = `${baseUrl}?code=${encodeURIComponent(token)}&employee=${encodeURIComponent(name)}`;
+        const card = document.createElement('div');
+        card.className = 'card print-area';
+        const title = document.createElement('h3');
+        title.textContent = name;
+        const urlEl = document.createElement('div');
+        urlEl.className = 'url';
+        urlEl.textContent = url;
+        const qrEl = document.createElement('div');
+        qrEl.style.margin = '8px auto';
+        card.appendChild(title);
+        card.appendChild(qrEl);
+        card.appendChild(urlEl);
+        grid.appendChild(card);
+        new QRCode(qrEl, { text: url, width: 180, height: 180 });
+      });
+    }
+
+    function downloadCSV() {
+      const saved = localStorage.getItem('qrTokens');
+      if (!saved) { alert('No tokens generated yet.'); return; }
+      const tokens = JSON.parse(saved);
+      const rows = ['Employee,Token'];
+      Object.keys(tokens).forEach(name => rows.push(`${name},${tokens[name]}`));
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'qr_tokens.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
