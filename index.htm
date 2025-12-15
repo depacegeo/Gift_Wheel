@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Christmas Gift Picker</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.1.3/TweenMax.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/zarocknz/javascript-winwheel@master/Winwheel.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    .login { max-width: 360px; margin: 40px auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+    .panel { max-width: 960px; margin: 20px auto; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card { border: 1px solid #ccc; border-radius: 8px; padding: 12px; text-align: center; }
+    .card h3 { margin: 8px 0; }
+    .row { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    .small { font-size: 12px; color: #555; }
+    .actions { margin: 12px 0; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .print-area { page-break-inside: avoid; }
+    .hidden { display:none; }
+    input[type=text], input[type=password] { width: 100%; padding: 8px; margin: 6px 0; box-sizing: border-box; }
+    .url { font-size: 11px; word-break: break-all; }
+    .wheel-panel { max-width: 960px; margin: 20px auto; }
+    button { padding: 8px 12px; cursor: pointer; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .employee-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin: 6px 0; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; }
+    .employee-item span { flex: 1; }
+    .employee-item button { padding: 4px 8px; margin: 0; margin-left: 8px; background: #d9534f; }
+    .employee-item button:hover { background: #c9302c; }
+    label { display: block; margin-top: 8px; font-weight: bold; font-size: 12px; }
+  </style>
+  <!--
+    QR flow: open the page with parameters `?code=<uniqueToken>&employee=<Name>`.
+    This locks the dropdown to that employee and enforces one-time use on this browser.
+  -->
+</head>
+<body>
+  <h1>Geovisualization Engineering & Spatial Technologies Pvt. Ltd.</h1>
+  <br>
+  <h1>🎄 Christmas Gift Name Picker Wheel 🎁</h1>
+
+  <!-- ADMIN LOGIN PANEL -->
+  <div class="login" id="loginBox">
+    <h2>Admin Login</h2>
+    <label>User ID</label>
+    <input type="text" id="adminUser" placeholder="User ID">
+    <label>Password</label>
+    <input type="password" id="adminPass" placeholder="Password">
+    <button id="loginBtn">Login</button>
+    <p id="loginMsg" class="small"></p>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div class="panel hidden" id="adminPanel">
+    <div class="row" style="justify-content: space-between; margin-bottom: 20px;">
+      <h2 style="margin: 0;">Admin Panel</h2>
+      <button id="logoutBtn">Logout</button>
+    </div>
+
+    <!-- GITHUB SETTINGS SECTION -->
+    <div style="max-width: 500px; margin: 20px auto; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background: #f0f7ff;">
+      <h3>GitHub Configuration</h3>
+      <label>GitHub Token</label>
+      <input type="password" id="githubToken" placeholder="GitHub Personal Access Token">
+      <label>GitHub Username</label>
+      <input type="text" id="githubUsername" placeholder="GitHub username">
+      <label>Repository Name</label>
+      <input type="text" id="githubRepo" placeholder="Repository name (e.g., christmas-gift-picker)">
+      <button id="saveGithubConfig" style="width:100%; margin-top: 8px;">Save GitHub Config</button>
+      <button id="testGithubConnection" style="width:100%; margin-top: 8px; background: #5cb85c;">Test Connection</button>
+      <button id="syncToGithub" style="width:100%; margin-top: 8px; background: #0275d8;">Sync to GitHub</button>
+      <p id="githubStatus" class="small" style="margin-top: 8px; text-align: center;"></p>
+      <p class="small" style="margin-top: 8px; background: #fff; padding: 8px; border-radius: 4px;">
+        <strong>Setup:</strong> Create a GitHub repo, generate a Personal Access Token with 'repo' scope, then enter credentials above.
+      </p>
+    </div>
+
+    <!-- EMPLOYEE MANAGEMENT SECTION -->
+    <div style="max-width: 500px; margin: 20px auto; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+      <h3>Manage Employees</h3>
+      <div class="row">
+        <input type="text" id="newEmployeeInput" placeholder="Enter employee name" style="flex:1; margin-right: 8px;">
+        <button id="addEmployeeBtn">Add</button>
+      </div>
+      <div id="employeesList" style="margin-top: 15px; max-height: 250px; overflow-y: auto;">
+        <!-- Employees will be listed here -->
+      </div>
+    </div>
+
+    <!-- QR CODE GENERATION SECTION -->
+    <div style="max-width: 800px; margin: 20px auto;">
+      <h2>Printable QR Codes</h2>
+      <div class="row">
+        <label>Base URL:</label>
+        <input type="text" id="baseUrl" style="flex:1" placeholder="e.g., https://example.com/index.htm">
+        <button id="loadDefaultUrl">Use current</button>
+      </div>
+      <div class="actions">
+        <button id="generateTokens">Generate Tokens</button>
+        <button id="reuseTokens">Reuse Existing Tokens</button>
+        <button id="printSheet">Print</button>
+        <button id="downloadCSV">Download CSV</button>
+      </div>
+      <div class="grid" id="qrGrid"></div>
+      <p class="small">Tip: Print the sheet and cut cards to distribute.</p>
+    </div>
+  </div>
+
+  <!-- WHEEL PANEL -->
+  <div class="wheel-panel hidden" id="wheelPanel">
+    <div class="container">
+      <h2>Employee: <span id="employeeName"></span></h2>
+      <button id="startSpin" disabled>SPIN</button>
+    </div>
+    <p id="qrError" style="color:red;text-align:center;"></p>
+
+    <div id="nameDisplay"></div>
+    <canvas id="wheelCanvas" width="500" height="500"></canvas>
+    <h2 id="resultText"></h2>
+    <p id="logStatus" style="font-size:12px;color:#555"></p>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

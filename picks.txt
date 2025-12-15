@@ -1,0 +1,2 @@
+# Secret Santa Picks Log
+# This file is a placeholder. Use the "Download Log" button in the app to export the latest picks.
