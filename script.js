@@ -119,6 +119,7 @@ async function loadPicksFromStorage() {
     try {
       const data = await githubApiCall('GET', 'picks.json');
       if (data) {
+        console.log('Picks loaded from GitHub:', data);
         return data;
       }
     } catch (err) {
@@ -128,9 +129,13 @@ async function loadPicksFromStorage() {
   
   // Fallback to localStorage
   const saved = localStorage.getItem('pickLogs');
+  console.log('pickLogs from localStorage:', saved);
   if (saved) {
-    return JSON.parse(saved);
+    const parsed = JSON.parse(saved);
+    console.log('Parsed picks:', parsed);
+    return parsed;
   }
+  console.log('No picks found, returning empty array');
   return [];
 }
 
@@ -399,15 +404,18 @@ function renderEmployeesList() {
 }
 
 function renderAdminPicksList(picks) {
+  console.log('renderAdminPicksList called with picks:', picks);
   const listContainer = document.getElementById('adminPicksList');
   
   if (!picks || picks.length === 0) {
+    console.log('No picks to display');
     listContainer.innerHTML = '<p style="text-align:center; color:#999;">No picks recorded yet</p>';
     return;
   }
 
   listContainer.innerHTML = '';
   picks.forEach(pick => {
+    console.log('Rendering pick:', pick);
     const item = document.createElement('div');
     item.style.cssText = 'padding: 8px; margin: 6px 0; background: white; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;';
     const time = new Date(pick.timeISO).toLocaleString();
@@ -510,6 +518,16 @@ function initRulesPanel() {
   // Get QR parameters
   const params = new URLSearchParams(window.location.search);
   const qrEmployee = params.get('employee');
+  const qrCode = params.get('code');
+  
+  console.log('initRulesPanel - QR Parameters:', { qrEmployee, qrCode });
+  console.log('Current employees list:', employeesList);
+  
+  // Validate employee exists
+  if (!qrEmployee || !employeesList.includes(qrEmployee)) {
+    alert(`Employee "${qrEmployee}" not found in the system. Please check the QR code.`);
+    return;
+  }
   
   // Display employee name in rules modal
   document.getElementById('rulesEmployeeName').textContent = qrEmployee;
@@ -539,48 +557,52 @@ function initWheelApp() {
   document.getElementById('adminPanel').classList.add('hidden');
   document.getElementById('wheelPanel').classList.remove('hidden');
 
-  // Get fresh employee list and shuffle
-  employees = shuffleArray(employeesList);
+  // Reload employee list from storage to get the latest employees
+  loadEmployees().then(list => {
+    employeesList = list;
+    employees = shuffleArray(employeesList);
 
-  // Load logs from storage (GitHub or localStorage)
-  loadPicksFromStorage().then(logs => {
-    pickLogs = logs;
-    updateLogStatus();
+    // Load logs from storage (GitHub or localStorage)
+    loadPicksFromStorage().then(logs => {
+      pickLogs = logs;
+      updateLogStatus();
+    });
+
+    // Validate QR params - must use the freshly loaded employeesList
+    if (!qrEmployee || !employeesList.includes(qrEmployee)) {
+      console.error('Validation failed. qrEmployee:', qrEmployee, 'employeesList:', employeesList);
+      document.getElementById('qrError').textContent = 'Invalid or missing QR code. Please scan a valid QR code.';
+      document.getElementById('startSpin').disabled = true;
+      return;
+    }
+
+    currentEmployee = qrEmployee;
+    deviceId = `qr-${qrToken}`;
+
+    // Display employee name
+    document.getElementById('employeeName').textContent = currentEmployee;
+
+    // Build local closed-loop mapping and store to localStorage (if not exists)
+    const saved = localStorage.getItem('closedLoopAssignments');
+    if (saved) {
+      assignments = JSON.parse(saved);
+    } else {
+      assignments = generateClosedLoop(employees);
+      localStorage.setItem('closedLoopAssignments', JSON.stringify(assignments));
+    }
+
+    // Prepare inverse map to grey out receivers
+    assignedReceivers = Object.fromEntries(Object.entries(assignments).map(([giver, receiver]) => [receiver, giver]));
+
+    // One-time check for token
+    if (localStorage.getItem(`spunToken:${qrToken}`) === 'true') {
+      document.getElementById('startSpin').disabled = true;
+      document.getElementById('resultText').innerText = 'This QR has already been used to spin.';
+    } else {
+      document.getElementById('startSpin').disabled = false;
+      buildWheel();
+    }
   });
-
-  // Validate QR params
-  if (!qrEmployee || !employeesList.includes(qrEmployee)) {
-    document.getElementById('qrError').textContent = 'Invalid or missing QR code. Please scan a valid QR code.';
-    document.getElementById('startSpin').disabled = true;
-    return;
-  }
-
-  currentEmployee = qrEmployee;
-  deviceId = `qr-${qrToken}`;
-
-  // Display employee name
-  document.getElementById('employeeName').textContent = currentEmployee;
-
-  // Build local closed-loop mapping and store to localStorage (if not exists)
-  const saved = localStorage.getItem('closedLoopAssignments');
-  if (saved) {
-    assignments = JSON.parse(saved);
-  } else {
-    assignments = generateClosedLoop(employees);
-    localStorage.setItem('closedLoopAssignments', JSON.stringify(assignments));
-  }
-
-  // Prepare inverse map to grey out receivers
-  assignedReceivers = Object.fromEntries(Object.entries(assignments).map(([giver, receiver]) => [receiver, giver]));
-
-  // One-time check for token
-  if (localStorage.getItem(`spunToken:${qrToken}`) === 'true') {
-    document.getElementById('startSpin').disabled = true;
-    document.getElementById('resultText').innerText = 'This QR has already been used to spin.';
-  } else {
-    document.getElementById('startSpin').disabled = false;
-    buildWheel();
-  }
 }
 
 // Build the wheel with all employees except current employee
@@ -794,20 +816,25 @@ function generateClosedLoop(list) {
 
 // --- Logging & export ---
 async function addLogEntry(giver, receiver) {
+  console.log('addLogEntry called with:', { giver, receiver });
   const entry = { timeISO: new Date().toISOString(), giver, receiver };
   
   // Load current picks from storage to ensure we don't lose data
   const currentPicks = await loadPicksFromStorage();
+  console.log('Current picks before adding:', currentPicks);
   
   // Prevent duplicates for same giver
   const exists = currentPicks.some(e => e.giver === giver);
   if (!exists) {
     currentPicks.push(entry);
+    console.log('New pick added, total picks now:', currentPicks);
     // Save to both localStorage and GitHub
     await savePicksToStorage(currentPicks);
     
     // Also update the global pickLogs
     pickLogs = currentPicks;
+  } else {
+    console.log('Duplicate pick detected for giver:', giver);
   }
   updateLogStatus();
 }
