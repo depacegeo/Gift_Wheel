@@ -174,8 +174,8 @@ loadEmployees().then(list => {
   employeesList = list;
   
   if (qrToken && qrEmployee) {
-    // QR mode: show wheel
-    initWheelApp();
+    // QR mode: show rules first
+    initRulesPanel();
   } else {
     // Admin mode: show login
     initAdminApp();
@@ -487,6 +487,35 @@ let wheel = null;
 let deviceId = null; // QR token or local device id
 let nameScrollInterval = null;
 let pickLogs = []; // array of { timeISO, giver, receiver }
+
+// Show rules modal popup when QR is scanned
+function initRulesPanel() {
+  // Get QR parameters
+  const params = new URLSearchParams(window.location.search);
+  const qrEmployee = params.get('employee');
+  
+  // Display employee name in rules modal
+  document.getElementById('rulesEmployeeName').textContent = qrEmployee;
+
+  // Show the modal
+  document.getElementById('rulesModalOverlay').classList.add('show');
+  document.getElementById('rulesModal').classList.add('show');
+
+  // Add event listener for continue button
+  const continueBtn = document.getElementById('continueToWheel');
+  const closeBtn = document.getElementById('closeRulesModal');
+  const overlay = document.getElementById('rulesModalOverlay');
+
+  const closeModal = () => {
+    document.getElementById('rulesModalOverlay').classList.remove('show');
+    document.getElementById('rulesModal').classList.remove('show');
+    initWheelApp();
+  };
+
+  continueBtn.addEventListener('click', closeModal);
+  closeBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', closeModal);
+}
 
 function initWheelApp() {
   document.getElementById('loginBox').classList.add('hidden');

@@ -86,6 +86,81 @@
       border-radius: 16px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     }
+    /* Modal Styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 9998;
+      backdrop-filter: blur(5px);
+    }
+    .modal-overlay.show {
+      display: block;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 650px;
+      max-height: 90vh;
+      width: 90%;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 50px rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      overflow-y: auto;
+      animation: modalSlideIn 0.3s ease;
+    }
+    .modal.show {
+      display: block;
+    }
+    @keyframes modalSlideIn {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -60%);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+      }
+    }
+    .modal-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 30px;
+      border-radius: 16px 16px 0 0;
+      text-align: center;
+      position: relative;
+    }
+    .modal-close {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 28px;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      line-height: 28px;
+      opacity: 0.8;
+      transition: opacity 0.3s;
+    }
+    .modal-close:hover {
+      opacity: 1;
+    }
+    .modal-body {
+      padding: 30px;
+      color: #333;
+    }
     .employee-item { 
       display: flex; 
       align-items: center; 
@@ -135,7 +210,7 @@
 <body>
   <h1>Geovisualization Engineering & Spatial Technologies Pvt. Ltd.</h1>
   <br>
-  <h1>🎄 Christmas Gift Name Picker Wheel 🎁</h1>
+  <h2>🎄 Christmas Gift Name Picker Wheel 🎁</h2>
 
   <!-- ADMIN LOGIN PANEL -->
   <div class="login" id="loginBox">
@@ -217,10 +292,51 @@
     </div>
   </div>
 
+  <!-- RULES MODAL -->
+  <div class="modal-overlay" id="rulesModalOverlay"></div>
+  <div class="modal" id="rulesModal">
+    <div class="modal-header">
+      <button class="modal-close" id="closeRulesModal">&times;</button>
+      <h1 style="margin: 0; font-size: 28px;">🎄 Secret Santa Rules 🎁</h1>
+      <h2 style="margin: 10px 0 0 0; font-size: 20px; opacity: 0.95;">Welcome, <span id="rulesEmployeeName"></span>!</h2>
+    </div>
+    <div class="modal-body">
+      <div style="line-height: 1.8; font-size: 16px;">
+        <p style="font-weight: bold; color: #667eea; font-size: 18px;">📋 How It Works:</p>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+          <li style="margin: 10px 0;">Click <strong>"SPIN THE WHEEL"</strong> to reveal who you'll be gifting to</li>
+          <li style="margin: 10px 0;">You can only spin the wheel <strong>ONCE</strong>. The QR code is valid for one-time use</li>
+          <li style="margin: 10px 0;">Keep your pick <strong>SECRET</strong> - don't tell anyone!</li>
+          <li style="margin: 10px 0;">Prepare a gift for the person you have picked</li>
+          <li style="margin: 10px 0;">The gift value should not be more than <strong>Rs. 500</strong></li>
+          <li style="margin: 10px 0;">The gift exchange program is fully meant for fun and joy. Make it filled with fun!</li>
+          <li style="margin: 10px 0;">The program will be held on <strong>December 25th, at 1:00 PM</strong></li>
+          <li style="margin: 10px 0;">Everyone is encouraged to participate and make it a success!</li>
+        </ul>
+
+        <p style="font-weight: bold; color: #667eea; font-size: 18px; margin-top: 25px;">⚠️ Important Reminders:</p>
+        <ul style="margin: 15px 0; padding-left: 25px;">
+          <li style="margin: 10px 0;">🤫 <strong>Keep it secret!</strong> The fun is in the surprise</li>
+          <li style="margin: 10px 0;">⏰ You have <strong>one chance only</strong></li>
+        </ul>
+
+        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <p style="margin: 0; color: #856404;"><strong>⚡ Note:</strong> Once you spin, you cannot change your result. Make sure you're ready before clicking the button!</p>
+        </div>
+      </div>
+
+      <div style="text-align: center; margin-top: 30px;">
+        <button id="continueToWheel" style="padding: 15px 40px; font-size: 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: all 0.3s ease;" onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 20px rgba(0,0,0,0.4)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 15px rgba(0,0,0,0.3)'">
+          ✨ I Understand - Let's Spin! ✨
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- WHEEL PANEL -->
   <div class="wheel-panel hidden" id="wheelPanel">
     <div class="container">
-      <h2>Employee: <span id="employeeName"></span></h2>
+      <h2><span id="employeeName" style="color: #2e0c7c91; font-weight: bold;"></span></h2>
       <button id="startSpin" disabled>SPIN</button>
     </div>
     <p id="qrError" style="color:red;text-align:center;"></p>
