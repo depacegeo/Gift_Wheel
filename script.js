@@ -112,10 +112,16 @@ async function saveEmployees(list) {
 
 // Load picks from GitHub or localStorage
 async function loadPicksFromStorage() {
+  // Always reload config from localStorage to get latest
   loadGithubConfig();
+  console.log('Loading picks with GitHub config:', { 
+    hasToken: !!githubConfig.token, 
+    username: githubConfig.username, 
+    repo: githubConfig.repo 
+  });
   
   // Try GitHub first
-  if (githubConfig.token) {
+  if (githubConfig.token && githubConfig.username && githubConfig.repo) {
     try {
       const data = await githubApiCall('GET', 'picks.json');
       if (data) {
@@ -144,20 +150,34 @@ async function savePicksToStorage(picks) {
   // Ensure picks is an array
   if (!Array.isArray(picks)) {
     console.error('savePicksToStorage called with invalid data:', picks);
-    return;
+    return false;
   }
   
+  // Save to localStorage first
   localStorage.setItem('pickLogs', JSON.stringify(picks));
   console.log('Picks saved to localStorage:', picks);
   
+  // Always reload config from localStorage to get latest
   loadGithubConfig();
-  if (githubConfig.token) {
+  console.log('Saving picks with GitHub config:', { 
+    hasToken: !!githubConfig.token, 
+    username: githubConfig.username, 
+    repo: githubConfig.repo 
+  });
+  
+  // Try to sync to GitHub
+  if (githubConfig.token && githubConfig.username && githubConfig.repo) {
     try {
       await githubApiCall('PUT', 'picks.json', picks);
-      console.log('Picks synced to GitHub successfully');
+      console.log('✓ Picks synced to GitHub successfully');
+      return true;
     } catch (err) {
-      console.log('Failed to sync picks to GitHub:', err.message);
+      console.error('✗ Failed to sync picks to GitHub:', err.message);
+      return false;
     }
+  } else {
+    console.warn('GitHub not configured, picks saved locally only');
+    return false;
   }
 }
 
@@ -185,17 +205,22 @@ const ghParam = params.get('gh');
 // If GitHub config is in URL (QR scan on mobile), load it
 if (ghParam) {
   try {
-    const decoded = JSON.parse(atob(decodeURIComponent(ghParam)));
+    console.log('GitHub param received:', ghParam.substring(0, 20) + '...');
+    const decoded = JSON.parse(atob(ghParam));
+    console.log('GitHub config decoded successfully');
     if (decoded.t && decoded.u && decoded.r) {
       saveGithubConfig({
         token: decoded.t,
         username: decoded.u,
         repo: decoded.r
       });
-      console.log('GitHub config loaded from QR code');
+      console.log('✓ GitHub config loaded from QR code and saved');
+      console.log('GitHub username:', decoded.u, 'repo:', decoded.r);
+    } else {
+      console.error('Decoded GitHub config missing required fields');
     }
   } catch (err) {
-    console.error('Failed to parse GitHub config from QR:', err);
+    console.error('✗ Failed to parse GitHub config from QR:', err);
   }
 }
 
@@ -491,7 +516,8 @@ function renderGrid(baseUrl, tokens) {
         u: githubConfig.username,
         r: githubConfig.repo
       }));
-      url += `&gh=${encodeURIComponent(configStr)}`;
+      // btoa produces URL-safe base64, but we should still encode it for URL safety
+      url += `&gh=${configStr}`;
     }
     const card = document.createElement('div');
     card.className = 'card print-area';
@@ -864,22 +890,46 @@ function announceResult(segment) {
 
 // Attempt to persist assignment using Firestore transaction. Falls back to local-only if Firestore unavailable.
 async function attemptAssignment(selectedName) {
+  console.log('=== attemptAssignment called ===');
+  console.log('Current Employee:', currentEmployee);
+  console.log('Selected Name:', selectedName);
+  
   const resultEl = document.getElementById('resultText');
 
   // Local-only: mapping already set; mark token/employee as spun and persist
   const localCycle = JSON.stringify(assignments);
   localStorage.setItem('closedLoopAssignments', localCycle);
+  
   const params = new URLSearchParams(window.location.search);
   const qrToken = params.get('code');
+  console.log('QR Token:', qrToken);
+  
   if (qrToken) {
     localStorage.setItem(`spunToken:${qrToken}`, 'true');
+    console.log('Token marked as used:', qrToken);
   } else {
     localStorage.setItem(`spun:${currentEmployee}`, 'true');
+    console.log('Employee marked as spun:', currentEmployee);
   }
+  
   resultEl.innerText = `🎁 ${currentEmployee} will gift to ${selectedName}!`;
   resultEl.style.color = 'green';
   document.getElementById('startSpin').disabled = true;
-  await addLogEntry(currentEmployee, selectedName);
+  
+  console.log('Calling addLogEntry...');
+  const saved = await addLogEntry(currentEmployee, selectedName);
+  
+  // Add visual feedback about sync status
+  setTimeout(() => {
+    loadGithubConfig();
+    if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+      resultEl.innerText += '\n✓ Synced to GitHub';
+    } else {
+      resultEl.innerText += '\n⚠ Saved locally only';
+    }
+  }, 1000);
+  
+  console.log('=== attemptAssignment completed ===');
   return;
 }
 
@@ -897,27 +947,41 @@ function generateClosedLoop(list) {
 
 // --- Logging & export ---
 async function addLogEntry(giver, receiver) {
-  console.log('addLogEntry called with:', { giver, receiver });
+  console.log('=== addLogEntry called ===');
+  console.log('Giver:', giver, 'Receiver:', receiver);
+  
   const entry = { timeISO: new Date().toISOString(), giver, receiver };
   
   // Load current picks from storage to ensure we don't lose data
   const currentPicks = await loadPicksFromStorage();
-  console.log('Current picks before adding:', currentPicks);
+  console.log('Current picks loaded:', currentPicks.length, 'entries');
   
   // Prevent duplicates for same giver
   const exists = currentPicks.some(e => e.giver === giver);
   if (!exists) {
     currentPicks.push(entry);
-    console.log('New pick added, total picks now:', currentPicks);
+    console.log('New pick added. Total picks now:', currentPicks.length);
+    
     // Save to both localStorage and GitHub
-    await savePicksToStorage(currentPicks);
+    const saved = await savePicksToStorage(currentPicks);
+    
+    if (saved) {
+      console.log('✓ Pick successfully saved and synced to GitHub');
+    } else {
+      console.warn('⚠ Pick saved locally but not synced to GitHub');
+    }
     
     // Also update the global pickLogs
     pickLogs = currentPicks;
+    updateLogStatus();
+    console.log('=== addLogEntry completed ===');
+    return saved;
   } else {
     console.log('Duplicate pick detected for giver:', giver);
+    updateLogStatus();
+    console.log('=== addLogEntry completed (duplicate) ===');
+    return false;
   }
-  updateLogStatus();
 }
 
 function updateLogStatus() {
