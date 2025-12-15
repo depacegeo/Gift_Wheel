@@ -359,6 +359,12 @@ function initAdminPanel() {
   loadPicksFromStorage().then(picks => {
     renderAdminPicksList(picks);
   });
+
+  // Auto-refresh picks every 3 seconds to show new picks immediately
+  setInterval(async () => {
+    const picks = await loadPicksFromStorage();
+    renderAdminPicksList(picks);
+  }, 3000);
 }
 
 function renderEmployeesList() {
