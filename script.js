@@ -1,5 +1,5 @@
 // === CONFIGURATION ===
-const DEFAULT_EMPLOYEES = ["Dipesh", "Safala", "Pramada", "Bikram", "Seren", "Neerjara", "Laxmi", "Suraj", "Dinesh", "Rojin", "Prabin", "Muna", "Jenisha", "Luzala", "Princika", "Aruna", "Monika", "Ronika", "Gagan", "Rahish","Saleel"];
+const DEFAULT_EMPLOYEES = ["Dipesh", "Safala", "Pramada", "Bikram", "Seren", "Neerjara", "Laxmi", "Suraj", "Dinesh", "Rojin", "Prabin", "Muna", "Jenisha", "Luzala", "Princika", "Aruna", "Monika", "Ronika", "Gagan", "Rahish","Saleel", "Amit Kumar", "Soniya"];
 const ADMIN_USER = 'geovest';
 const ADMIN_PASS = 'geovestdec25';
 
@@ -91,8 +91,8 @@ async function sendPickEmail(giver, receiver) {
   }
 }
 
-// GitHub API functions with retry logic
-async function githubApiCall(method, path, data = null, retries = 3) {
+// GitHub API functions with retry logic (fast fail for better UX)
+async function githubApiCall(method, path, data = null, retries = 2) {
   if (!githubConfig.token || !githubConfig.username || !githubConfig.repo) {
     const error = 'GitHub not configured: ' + JSON.stringify({
       hasToken: !!githubConfig.token,
@@ -156,34 +156,36 @@ async function githubApiCall(method, path, data = null, retries = 3) {
         console.error('All GitHub API retries failed:', err);
         throw err;
       }
-      // Wait before retry (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      // Wait before retry (shorter delay for faster response)
+      await new Promise(resolve => setTimeout(resolve, 300 * attempt));
     }
   }
 }
 
-// Load employees from GitHub or localStorage
+// Load employees from localStorage first (instant), sync GitHub in background
 async function loadEmployees() {
+  // Load from localStorage FIRST (instant)
+  const saved = localStorage.getItem('employeesList');
+  let localEmployees = saved ? JSON.parse(saved) : DEFAULT_EMPLOYEES;
+  
   loadGithubConfig();
   
-  // Try GitHub first
+  // Sync with GitHub in background (non-blocking)
   if (githubConfig.token) {
-    try {
-      const data = await githubApiCall('GET', 'employees.json');
-      if (data) {
-        return data;
+    githubApiCall('GET', 'employees.json').then(data => {
+      if (data && data.length > 0) {
+        localStorage.setItem('employeesList', JSON.stringify(data));
+        if (JSON.stringify(data) !== JSON.stringify(localEmployees)) {
+          console.log('✓ Employees synced from GitHub (updated in background)');
+        }
       }
-    } catch (err) {
-      console.log('GitHub not available, falling back to localStorage');
-    }
+    }).catch(err => {
+      console.log('GitHub sync failed (using local data):', err.message);
+    });
   }
   
-  // Fallback to localStorage
-  const saved = localStorage.getItem('employeesList');
-  if (saved) {
-    return JSON.parse(saved);
-  }
-  return DEFAULT_EMPLOYEES;
+  // Return cached data immediately
+  return localEmployees;
 }
 
 // Save employees to GitHub and localStorage
@@ -199,50 +201,42 @@ async function saveEmployees(list) {
   }
 }
 
-// Load picks from GitHub or localStorage
+// Load picks from localStorage first (fast), then sync from GitHub in background
 async function loadPicksFromStorage() {
   console.log('=== loadPicksFromStorage called ===');
   
+  // Load from localStorage FIRST (instant, no network delay)
+  const saved = localStorage.getItem('pickLogs');
+  let localPicks = [];
+  if (saved) {
+    try {
+      localPicks = JSON.parse(saved);
+      console.log(`✓ Picks loaded from localStorage: ${localPicks.length} entries`);
+    } catch (err) {
+      console.error('Failed to parse localStorage picks:', err);
+    }
+  }
+  
   // Always reload config from localStorage to get latest
   loadGithubConfig();
-  console.log('GitHub config:', { 
-    hasToken: !!githubConfig.token, 
-    username: githubConfig.username, 
-    repo: githubConfig.repo 
-  });
   
-  // Try GitHub first (PRIMARY source)
+  // Try GitHub in background (for sync, but don't block UI)
   if (githubConfig.token && githubConfig.username && githubConfig.repo) {
-    try {
-      console.log('Attempting to load picks from GitHub...');
-      const data = await githubApiCall('GET', 'picks.json');
-      if (data && Array.isArray(data)) {
-        console.log(`✓ Picks loaded from GitHub: ${data.length} entries`);
-        console.log('=== loadPicksFromStorage completed (from GitHub) ===');
-        return data;
-      } else {
-        console.log('No picks found in GitHub, checking localStorage...');
+    // Return localStorage data immediately, sync GitHub in background
+    githubApiCall('GET', 'picks.json').then(data => {
+      if (data && Array.isArray(data) && data.length > localPicks.length) {
+        console.log(`✓ GitHub has more picks (${data.length} vs ${localPicks.length}), updating...`);
+        localStorage.setItem('pickLogs', JSON.stringify(data));
+        pickLogs = data;
+        updateLogStatus();
       }
-    } catch (err) {
-      console.warn('Failed to load from GitHub:', err.message);
-      console.log('Falling back to localStorage...');
-    }
-  } else {
-    console.warn('GitHub not configured, using localStorage only');
+    }).catch(err => {
+      console.log('GitHub sync failed (using local data):', err.message);
+    });
   }
   
-  // Fallback to localStorage
-  const saved = localStorage.getItem('pickLogs');
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    console.log(`✓ Picks loaded from localStorage: ${parsed.length} entries`);
-    console.log('=== loadPicksFromStorage completed (from localStorage) ===');
-    return parsed;
-  }
-  
-  console.log('No picks found anywhere, returning empty array');
-  console.log('=== loadPicksFromStorage completed (empty) ===');
-  return [];
+  console.log('=== loadPicksFromStorage completed (instant from localStorage) ===');
+  return localPicks;
 }
 
 // Save picks to GitHub and localStorage
@@ -757,7 +751,7 @@ let nameScrollInterval = null;
 let pickLogs = []; // array of { timeISO, giver, receiver }
 
 // Show rules modal popup when QR is scanned
-async function initRulesPanel() {
+function initRulesPanel() {
   console.log('initRulesPanel called');
   
   // Get QR parameters
@@ -767,11 +761,7 @@ async function initRulesPanel() {
   
   console.log('initRulesPanel - QR Parameters:', { qrEmployee, qrCode });
   
-  // CRITICAL: Reload employee list from storage to get latest additions
-  console.log('Reloading employee list from storage...');
-  employeesList = await loadEmployees();
-  console.log('Employee list reloaded:', employeesList);
-  
+  // Use already loaded employee list (loaded at page startup)
   // Validate employee exists
   if (!qrEmployee || !employeesList.includes(qrEmployee)) {
     console.error('Employee not found:', qrEmployee);
@@ -789,7 +779,7 @@ async function initRulesPanel() {
     return;
   }
 
-  // Show the modal
+  // Show the modal IMMEDIATELY
   const overlay = document.getElementById('rulesModalOverlay');
   const modal = document.getElementById('rulesModal');
   
@@ -837,24 +827,29 @@ async function initRulesPanel() {
 }
 
 async function initWheelApp() {
+  // Show UI immediately
   document.getElementById('loginBox').classList.add('hidden');
   document.getElementById('adminPanel').classList.add('hidden');
   document.getElementById('wheelPanel').classList.remove('hidden');
 
-  // Reload employee list from storage to get the latest employees
-  console.log('initWheelApp: Reloading employee list...');
-  employeesList = await loadEmployees();
-  console.log('initWheelApp: Employee list loaded:', employeesList);
+  // Use already loaded employee list (no need to reload)
+  console.log('initWheelApp: Using cached employee list:', employeesList.length, 'employees');
   employees = shuffleArray(employeesList);
-
-  // Load logs from storage (GitHub or localStorage)
-  pickLogs = await loadPicksFromStorage();
-  updateLogStatus();
 
   // Get QR parameters for validation
   const params = new URLSearchParams(window.location.search);
   const qrEmployee = params.get('employee');
   const qrToken = params.get('code');
+  
+  // Load picks in background (non-blocking)
+  loadPicksFromStorage().then(logs => {
+    pickLogs = logs;
+    updateLogStatus();
+  }).catch(err => {
+    console.error('Failed to load picks:', err);
+    pickLogs = [];
+    updateLogStatus();
+  });
 
   // Validate QR params - must use the freshly loaded employeesList
   if (!qrEmployee || !employeesList.includes(qrEmployee)) {
@@ -905,8 +900,10 @@ async function initWheelApp() {
     document.getElementById('startSpin').disabled = true;
     document.getElementById('resultText').innerText = 'This QR has already been used to spin.';
   } else {
-    document.getElementById('startSpin').disabled = false;
+    // Build wheel immediately (synchronous, fast)
     buildWheel();
+    // Enable button after wheel is ready
+    document.getElementById('startSpin').disabled = false;
   }
 }
 
