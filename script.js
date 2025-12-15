@@ -567,7 +567,7 @@ let nameScrollInterval = null;
 let pickLogs = []; // array of { timeISO, giver, receiver }
 
 // Show rules modal popup when QR is scanned
-function initRulesPanel() {
+async function initRulesPanel() {
   console.log('initRulesPanel called');
   
   // Get QR parameters
@@ -576,11 +576,16 @@ function initRulesPanel() {
   const qrCode = params.get('code');
   
   console.log('initRulesPanel - QR Parameters:', { qrEmployee, qrCode });
-  console.log('Current employees list:', employeesList);
+  
+  // CRITICAL: Reload employee list from storage to get latest additions
+  console.log('Reloading employee list from storage...');
+  employeesList = await loadEmployees();
+  console.log('Employee list reloaded:', employeesList);
   
   // Validate employee exists
   if (!qrEmployee || !employeesList.includes(qrEmployee)) {
     console.error('Employee not found:', qrEmployee);
+    console.error('Available employees:', employeesList);
     alert(`Employee "${qrEmployee}" not found in the system. Please check the QR code.`);
     return;
   }
@@ -641,75 +646,78 @@ function initRulesPanel() {
   });
 }
 
-function initWheelApp() {
+async function initWheelApp() {
   document.getElementById('loginBox').classList.add('hidden');
   document.getElementById('adminPanel').classList.add('hidden');
   document.getElementById('wheelPanel').classList.remove('hidden');
 
   // Reload employee list from storage to get the latest employees
-  loadEmployees().then(list => {
-    employeesList = list;
-    employees = shuffleArray(employeesList);
+  console.log('initWheelApp: Reloading employee list...');
+  employeesList = await loadEmployees();
+  console.log('initWheelApp: Employee list loaded:', employeesList);
+  employees = shuffleArray(employeesList);
 
-    // Load logs from storage (GitHub or localStorage)
-    loadPicksFromStorage().then(logs => {
-      pickLogs = logs;
-      updateLogStatus();
-    });
+  // Load logs from storage (GitHub or localStorage)
+  pickLogs = await loadPicksFromStorage();
+  updateLogStatus();
 
-    // Validate QR params - must use the freshly loaded employeesList
-    if (!qrEmployee || !employeesList.includes(qrEmployee)) {
-      console.error('Validation failed. qrEmployee:', qrEmployee, 'employeesList:', employeesList);
-      document.getElementById('qrError').textContent = 'Invalid or missing QR code. Please scan a valid QR code.';
-      document.getElementById('startSpin').disabled = true;
-      return;
-    }
+  // Get QR parameters for validation
+  const params = new URLSearchParams(window.location.search);
+  const qrEmployee = params.get('employee');
+  const qrToken = params.get('code');
 
-    currentEmployee = qrEmployee;
-    deviceId = `qr-${qrToken}`;
+  // Validate QR params - must use the freshly loaded employeesList
+  if (!qrEmployee || !employeesList.includes(qrEmployee)) {
+    console.error('Validation failed. qrEmployee:', qrEmployee, 'employeesList:', employeesList);
+    document.getElementById('qrError').textContent = 'Invalid or missing QR code. Please scan a valid QR code.';
+    document.getElementById('startSpin').disabled = true;
+    return;
+  }
 
-    // Display employee name
-    document.getElementById('employeeName').textContent = currentEmployee;
+  currentEmployee = qrEmployee;
+  deviceId = `qr-${qrToken}`;
 
-    // Build local closed-loop mapping and store to localStorage (if not exists)
-    const saved = localStorage.getItem('closedLoopAssignments');
-    let needsRegeneration = false;
+  // Display employee name
+  document.getElementById('employeeName').textContent = currentEmployee;
+
+  // Build local closed-loop mapping and store to localStorage (if not exists)
+  const saved = localStorage.getItem('closedLoopAssignments');
+  let needsRegeneration = false;
+  
+  if (saved) {
+    assignments = JSON.parse(saved);
     
-    if (saved) {
-      assignments = JSON.parse(saved);
-      
-      // Check if all current employees are in the assignments
-      const assignedEmployees = new Set(Object.keys(assignments));
-      const currentEmployees = new Set(employees);
-      
-      // If any employee is missing or extra employees exist, regenerate
-      if (assignedEmployees.size !== currentEmployees.size || 
-          !employees.every(emp => assignedEmployees.has(emp))) {
-        console.log('Employee list changed, regenerating closed-loop assignments');
-        needsRegeneration = true;
-      }
-    } else {
+    // Check if all current employees are in the assignments
+    const assignedEmployees = new Set(Object.keys(assignments));
+    const currentEmployees = new Set(employees);
+    
+    // If any employee is missing or extra employees exist, regenerate
+    if (assignedEmployees.size !== currentEmployees.size || 
+        !employees.every(emp => assignedEmployees.has(emp))) {
+      console.log('Employee list changed, regenerating closed-loop assignments');
       needsRegeneration = true;
     }
-    
-    if (needsRegeneration) {
-      assignments = generateClosedLoop(employees);
-      localStorage.setItem('closedLoopAssignments', JSON.stringify(assignments));
-      console.log('New assignments generated:', assignments);
-    }
+  } else {
+    needsRegeneration = true;
+  }
+  
+  if (needsRegeneration) {
+    assignments = generateClosedLoop(employees);
+    localStorage.setItem('closedLoopAssignments', JSON.stringify(assignments));
+    console.log('New assignments generated:', assignments);
+  }
 
-    // Prepare inverse map to grey out receivers
-    assignedReceivers = Object.fromEntries(Object.entries(assignments).map(([giver, receiver]) => [receiver, giver]));
+  // Prepare inverse map to grey out receivers
+  assignedReceivers = Object.fromEntries(Object.entries(assignments).map(([giver, receiver]) => [receiver, giver]));
 
-    // One-time check for token
-    if (localStorage.getItem(`spunToken:${qrToken}`) === 'true') {
-      document.getElementById('startSpin').disabled = true;
-      document.getElementById('resultText').innerText = 'This QR has already been used to spin.';
-    } else {
-      document.getElementById('startSpin').disabled = false;
-      buildWheel();
-    }
-  });
+  // One-time check for token
+  if (localStorage.getItem(`spunToken:${qrToken}`) === 'true') {
+    document.getElementById('startSpin').disabled = true;
+    document.getElementById('resultText').innerText = 'This QR has already been used to spin.';
+  } else {
+    document.getElementById('startSpin').disabled = false;
+    buildWheel();
+  }
 }
 
 // Build the wheel with all employees except current employee
