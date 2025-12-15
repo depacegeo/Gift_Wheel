@@ -180,6 +180,24 @@ loadGithubConfig();
 const params = new URLSearchParams(window.location.search);
 const qrToken = params.get('code');
 const qrEmployee = params.get('employee');
+const ghParam = params.get('gh');
+
+// If GitHub config is in URL (QR scan on mobile), load it
+if (ghParam) {
+  try {
+    const decoded = JSON.parse(atob(decodeURIComponent(ghParam)));
+    if (decoded.t && decoded.u && decoded.r) {
+      saveGithubConfig({
+        token: decoded.t,
+        username: decoded.u,
+        repo: decoded.r
+      });
+      console.log('GitHub config loaded from QR code');
+    }
+  } catch (err) {
+    console.error('Failed to parse GitHub config from QR:', err);
+  }
+}
 
 // Load employees and then initialize
 loadEmployees().then(list => {
@@ -465,7 +483,16 @@ function renderGrid(baseUrl, tokens) {
   grid.innerHTML = '';
   employeesList.forEach(name => {
     const token = tokens[name];
-    const url = `${baseUrl}?code=${encodeURIComponent(token)}&employee=${encodeURIComponent(name)}`;
+    // Include GitHub config in URL for mobile sync
+    let url = `${baseUrl}?code=${encodeURIComponent(token)}&employee=${encodeURIComponent(name)}`;
+    if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+      const configStr = btoa(JSON.stringify({
+        t: githubConfig.token,
+        u: githubConfig.username,
+        r: githubConfig.repo
+      }));
+      url += `&gh=${encodeURIComponent(configStr)}`;
+    }
     const card = document.createElement('div');
     card.className = 'card print-area';
     const title = document.createElement('h3');
@@ -620,11 +647,29 @@ function initWheelApp() {
 
     // Build local closed-loop mapping and store to localStorage (if not exists)
     const saved = localStorage.getItem('closedLoopAssignments');
+    let needsRegeneration = false;
+    
     if (saved) {
       assignments = JSON.parse(saved);
+      
+      // Check if all current employees are in the assignments
+      const assignedEmployees = new Set(Object.keys(assignments));
+      const currentEmployees = new Set(employees);
+      
+      // If any employee is missing or extra employees exist, regenerate
+      if (assignedEmployees.size !== currentEmployees.size || 
+          !employees.every(emp => assignedEmployees.has(emp))) {
+        console.log('Employee list changed, regenerating closed-loop assignments');
+        needsRegeneration = true;
+      }
     } else {
+      needsRegeneration = true;
+    }
+    
+    if (needsRegeneration) {
       assignments = generateClosedLoop(employees);
       localStorage.setItem('closedLoopAssignments', JSON.stringify(assignments));
+      console.log('New assignments generated:', assignments);
     }
 
     // Prepare inverse map to grey out receivers
