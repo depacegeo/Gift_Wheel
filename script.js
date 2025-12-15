@@ -24,10 +24,16 @@ function saveGithubConfig(config) {
   localStorage.setItem('githubConfig', JSON.stringify(config));
 }
 
-// GitHub API functions
-async function githubApiCall(method, path, data = null) {
+// GitHub API functions with retry logic
+async function githubApiCall(method, path, data = null, retries = 3) {
   if (!githubConfig.token || !githubConfig.username || !githubConfig.repo) {
-    throw new Error('GitHub not configured');
+    const error = 'GitHub not configured: ' + JSON.stringify({
+      hasToken: !!githubConfig.token,
+      username: githubConfig.username,
+      repo: githubConfig.repo
+    });
+    console.error(error);
+    throw new Error(error);
   }
 
   const url = `https://api.github.com/repos/${githubConfig.username}/${githubConfig.repo}/contents/${path}`;
@@ -36,40 +42,56 @@ async function githubApiCall(method, path, data = null) {
     'Accept': 'application/vnd.github.v3+json'
   };
 
-  try {
-    if (method === 'GET') {
-      const response = await fetch(url, { headers });
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-      const file = await response.json();
-      return JSON.parse(atob(file.content));
-    } else if (method === 'PUT') {
-      // Get current file to get SHA (required for update)
-      const getResponse = await fetch(url, { headers });
-      let sha = null;
-      if (getResponse.ok) {
-        const file = await getResponse.json();
-        sha = file.sha;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      if (method === 'GET') {
+        const response = await fetch(url, { headers });
+        if (response.status === 404) return null;
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`GitHub API error ${response.status}: ${errorText}`);
+        }
+        const file = await response.json();
+        return JSON.parse(atob(file.content));
+      } else if (method === 'PUT') {
+        // Get current file to get SHA (required for update)
+        const getResponse = await fetch(url, { headers });
+        let sha = null;
+        if (getResponse.ok) {
+          const file = await getResponse.json();
+          sha = file.sha;
+        }
+
+        const body = {
+          message: `Update ${path} at ${new Date().toISOString()}`,
+          content: btoa(JSON.stringify(data, null, 2)),
+          branch: 'main'
+        };
+        if (sha) body.sha = sha;
+
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(body)
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`GitHub API error ${response.status}: ${errorText}`);
+        }
+        
+        console.log(`✓ GitHub API ${method} ${path} successful on attempt ${attempt}`);
+        return true;
       }
-
-      const body = {
-        message: `Update ${path}`,
-        content: btoa(JSON.stringify(data, null, 2)),
-        branch: 'main'
-      };
-      if (sha) body.sha = sha;
-
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(body)
-      });
-      if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-      return true;
+    } catch (err) {
+      console.error(`GitHub API attempt ${attempt}/${retries} failed:`, err.message);
+      if (attempt === retries) {
+        console.error('All GitHub API retries failed:', err);
+        throw err;
+      }
+      // Wait before retry (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
-  } catch (err) {
-    console.error('GitHub API error:', err);
-    throw err;
   }
 }
 
@@ -112,71 +134,95 @@ async function saveEmployees(list) {
 
 // Load picks from GitHub or localStorage
 async function loadPicksFromStorage() {
+  console.log('=== loadPicksFromStorage called ===');
+  
   // Always reload config from localStorage to get latest
   loadGithubConfig();
-  console.log('Loading picks with GitHub config:', { 
+  console.log('GitHub config:', { 
     hasToken: !!githubConfig.token, 
     username: githubConfig.username, 
     repo: githubConfig.repo 
   });
   
-  // Try GitHub first
+  // Try GitHub first (PRIMARY source)
   if (githubConfig.token && githubConfig.username && githubConfig.repo) {
     try {
+      console.log('Attempting to load picks from GitHub...');
       const data = await githubApiCall('GET', 'picks.json');
-      if (data) {
-        console.log('Picks loaded from GitHub:', data);
+      if (data && Array.isArray(data)) {
+        console.log(`✓ Picks loaded from GitHub: ${data.length} entries`);
+        console.log('=== loadPicksFromStorage completed (from GitHub) ===');
         return data;
+      } else {
+        console.log('No picks found in GitHub, checking localStorage...');
       }
     } catch (err) {
-      console.log('GitHub not available for picks');
+      console.warn('Failed to load from GitHub:', err.message);
+      console.log('Falling back to localStorage...');
     }
+  } else {
+    console.warn('GitHub not configured, using localStorage only');
   }
   
   // Fallback to localStorage
   const saved = localStorage.getItem('pickLogs');
-  console.log('pickLogs from localStorage:', saved);
   if (saved) {
     const parsed = JSON.parse(saved);
-    console.log('Parsed picks:', parsed);
+    console.log(`✓ Picks loaded from localStorage: ${parsed.length} entries`);
+    console.log('=== loadPicksFromStorage completed (from localStorage) ===');
     return parsed;
   }
-  console.log('No picks found, returning empty array');
+  
+  console.log('No picks found anywhere, returning empty array');
+  console.log('=== loadPicksFromStorage completed (empty) ===');
   return [];
 }
 
 // Save picks to GitHub and localStorage
 async function savePicksToStorage(picks) {
+  console.log('=== savePicksToStorage called ===');
+  
   // Ensure picks is an array
   if (!Array.isArray(picks)) {
     console.error('savePicksToStorage called with invalid data:', picks);
     return false;
   }
   
-  // Save to localStorage first
-  localStorage.setItem('pickLogs', JSON.stringify(picks));
-  console.log('Picks saved to localStorage:', picks);
+  console.log('Picks to save:', JSON.stringify(picks, null, 2));
   
   // Always reload config from localStorage to get latest
   loadGithubConfig();
-  console.log('Saving picks with GitHub config:', { 
-    hasToken: !!githubConfig.token, 
+  console.log('GitHub config:', { 
+    hasToken: !!githubConfig.token,
+    tokenLength: githubConfig.token ? githubConfig.token.length : 0,
     username: githubConfig.username, 
     repo: githubConfig.repo 
   });
   
-  // Try to sync to GitHub
+  // Save to localStorage as backup
+  localStorage.setItem('pickLogs', JSON.stringify(picks));
+  console.log('✓ Picks saved to localStorage');
+  
+  // Try to sync to GitHub (PRIMARY storage)
   if (githubConfig.token && githubConfig.username && githubConfig.repo) {
     try {
+      console.log('Attempting to save to GitHub...');
       await githubApiCall('PUT', 'picks.json', picks);
-      console.log('✓ Picks synced to GitHub successfully');
+      console.log('✓✓✓ PICKS SYNCED TO GITHUB SUCCESSFULLY ✓✓✓');
+      console.log('=== savePicksToStorage completed successfully ===');
       return true;
     } catch (err) {
-      console.error('✗ Failed to sync picks to GitHub:', err.message);
+      console.error('✗✗✗ FAILED TO SYNC PICKS TO GITHUB ✗✗✗');
+      console.error('Error details:', err);
+      console.error('=== savePicksToStorage completed with errors ===');
+      alert('Warning: Pick saved locally but failed to sync to GitHub. Error: ' + err.message);
       return false;
     }
   } else {
-    console.warn('GitHub not configured, picks saved locally only');
+    console.error('✗ GitHub not configured properly!');
+    console.error('Cannot save to GitHub - picks saved locally only');
+    console.error('=== savePicksToStorage completed (local only) ===');
+    alert('Warning: GitHub not configured. Pick saved locally only.');
     return false;
   }
 }
