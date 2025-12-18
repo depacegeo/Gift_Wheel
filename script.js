@@ -57,21 +57,43 @@ async function sendPickEmail(giver, receiver) {
   
   try {
     console.log('Sending email notification...');
+    console.log('Giver:', giver, 'Receiver:', receiver);
     
     // Initialize EmailJS if not already done
     if (typeof emailjs !== 'undefined') {
       emailjs.init(emailConfig.publicKey);
       
+      // Format timestamp
+      const now = new Date();
+      const timestamp = now.toLocaleString('en-US', { 
+        timeZone: 'Asia/Kathmandu',
+        dateStyle: 'full',
+        timeStyle: 'long'
+      });
+      
+      // Template parameters - use simple key names that match EmailJS template variables
       const templateParams = {
+        // Common variable names
+        to_name: 'Admin',
         to_email: emailConfig.recipientEmail,
+        from_name: 'Gift Wheel App',
+        
+        // Pick-specific variables
+        giver: giver,
+        receiver: receiver,
         giver_name: giver,
         receiver_name: receiver,
-        timestamp: new Date().toLocaleString('en-US', { 
-          timeZone: 'Asia/Kathmandu',
-          dateStyle: 'full',
-          timeStyle: 'long'
-        })
+        
+        // Timestamp in multiple formats
+        timestamp: timestamp,
+        date: now.toLocaleDateString('en-US', { timeZone: 'Asia/Kathmandu' }),
+        time: now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kathmandu' }),
+        
+        // Message
+        message: `${giver} has picked ${receiver} for the gift exchange!`
       };
+      
+      console.log('Template params:', templateParams);
       
       await emailjs.send(
         emailConfig.serviceId,
@@ -87,6 +109,7 @@ async function sendPickEmail(giver, receiver) {
     }
   } catch (err) {
     console.error('Failed to send email:', err);
+    console.error('Error details:', err.text || err.message);
     return false;
   }
 }
