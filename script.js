@@ -185,57 +185,47 @@ async function githubApiCall(method, path, data = null, retries = 2) {
   }
 }
 
-// Load employees from localStorage first (instant), sync GitHub in background
+// Load employees from employees.json file
 async function loadEmployees() {
-  // Try loading from employees.json file first
+  console.log('Loading employees from employees.json...');
   try {
     const response = await fetch('employees.json');
     if (response.ok) {
       const fileData = await response.json();
-      if (fileData && Array.isArray(fileData) && fileData.length > 0) {
-        localStorage.setItem('employeesList', JSON.stringify(fileData));
-        console.log('✓ Employees loaded from employees.json file');
+      if (fileData && Array.isArray(fileData)) {
+        console.log(`✓ Loaded ${fileData.length} employees from employees.json`);
         return fileData;
       }
     }
   } catch (err) {
-    console.log('Could not load employees.json:', err.message);
+    console.error('Failed to load employees.json:', err.message);
   }
   
-  // Fallback to localStorage
-  const saved = localStorage.getItem('employeesList');
-  let localEmployees = saved ? JSON.parse(saved) : [];
-  
-  loadGithubConfig();
-  
-  // Sync with GitHub in background (non-blocking)
-  if (githubConfig.token) {
-    githubApiCall('GET', 'employees.json').then(data => {
-      if (data && data.length > 0) {
-        localStorage.setItem('employeesList', JSON.stringify(data));
-        if (JSON.stringify(data) !== JSON.stringify(localEmployees)) {
-          console.log('✓ Employees synced from GitHub (updated in background)');
-        }
-      }
-    }).catch(err => {
-      console.log('GitHub sync failed (using local data):', err.message);
-    });
-  }
-  
-  // Return cached data immediately
-  return localEmployees;
+  console.warn('⚠ No employees found in employees.json');
+  return [];
 }
 
 // Save employees to GitHub and localStorage
 async function saveEmployees(list) {
-  localStorage.setItem('employeesList', JSON.stringify(list));
+  console.log(`Saving ${list.length} employees to employees.json...`);
   
-  if (githubConfig.token) {
-    try {
-      await githubApiCall('PUT', 'employees.json', list);
-    } catch (err) {
-      console.log('Failed to sync to GitHub:', err.message);
-    }
+  loadGithubConfig();
+  
+  if (!githubConfig.token || !githubConfig.username || !githubConfig.repo) {
+    alert('GitHub not configured. Please configure GitHub settings first.');
+    console.error('Cannot save: GitHub not configured');
+    return false;
+  }
+  
+  try {
+    await githubApiCall('PUT', 'employees.json', list);
+    console.log('✓ Employees saved to GitHub successfully');
+    alert('✓ Employees saved successfully!');
+    return true;
+  } catch (err) {
+    console.error('Failed to save employees:', err.message);
+    alert('Error saving employees: ' + err.message);
+    return false;
   }
 }
 
@@ -607,7 +597,7 @@ function initAdminPanel() {
   });
 
   // Add employee
-  addEmployeeBtn.addEventListener('click', () => {
+  addEmployeeBtn.addEventListener('click', async () => {
     const name = newEmployeeInput.value.trim();
     if (!name) {
       alert('Please enter an employee name');
@@ -618,9 +608,16 @@ function initAdminPanel() {
       return;
     }
     employeesList.push(name);
-    saveEmployees(employeesList);
-    newEmployeeInput.value = '';
-    renderEmployeesList();
+    const saved = await saveEmployees(employeesList);
+    if (saved) {
+      newEmployeeInput.value = '';
+      // Reload from file to ensure consistency
+      employeesList = await loadEmployees();
+      renderEmployeesList();
+    } else {
+      // Revert the change if save failed
+      employeesList.pop();
+    }
   });
 
   // Allow Enter key to add employee
@@ -792,11 +789,19 @@ function downloadPicks(picks) {
   URL.revokeObjectURL(url);
 }
 
-function removeEmployee(index) {
-  if (confirm(`Remove ${employeesList[index]}?`)) {
-    employeesList.splice(index, 1);
-    saveEmployees(employeesList);
-    renderEmployeesList();
+async function removeEmployee(index) {
+  const employeeName = employeesList[index];
+  if (confirm(`Remove ${employeeName}?`)) {
+    const removedEmployee = employeesList.splice(index, 1)[0];
+    const saved = await saveEmployees(employeesList);
+    if (saved) {
+      // Reload from file to ensure consistency
+      employeesList = await loadEmployees();
+      renderEmployeesList();
+    } else {
+      // Revert the change if save failed
+      employeesList.splice(index, 0, removedEmployee);
+    }
   }
 }
 
