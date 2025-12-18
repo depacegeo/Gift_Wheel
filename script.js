@@ -5,9 +5,9 @@ const ADMIN_PASS = 'geovestdec25';
 
 // GitHub configuration
 let githubConfig = {
-  token: null,
-  username: null,
-  repo: null
+  token: '',
+  username: 'depacegeo',
+  repo: 'Gift_Wheel'
 };
 
 // EmailJS configuration
@@ -187,9 +187,24 @@ async function githubApiCall(method, path, data = null, retries = 2) {
 
 // Load employees from localStorage first (instant), sync GitHub in background
 async function loadEmployees() {
-  // Load from localStorage FIRST (instant)
+  // Try loading from employees.json file first
+  try {
+    const response = await fetch('employees.json');
+    if (response.ok) {
+      const fileData = await response.json();
+      if (fileData && Array.isArray(fileData) && fileData.length > 0) {
+        localStorage.setItem('employeesList', JSON.stringify(fileData));
+        console.log('✓ Employees loaded from employees.json file');
+        return fileData;
+      }
+    }
+  } catch (err) {
+    console.log('Could not load employees.json:', err.message);
+  }
+  
+  // Fallback to localStorage
   const saved = localStorage.getItem('employeesList');
-  let localEmployees = saved ? JSON.parse(saved) : DEFAULT_EMPLOYEES;
+  let localEmployees = saved ? JSON.parse(saved) : [];
   
   loadGithubConfig();
   
