@@ -507,6 +507,9 @@ function initAdminPanel() {
   // Load and display current employees
   renderEmployeesList();
 
+  // Auto-load existing QR codes if they exist
+  autoLoadQRCodes();
+
   // EmailJS config handlers
   document.getElementById('saveEmailConfig').addEventListener('click', () => {
     const serviceId = document.getElementById('emailServiceId').value.trim();
@@ -626,6 +629,7 @@ function initAdminPanel() {
     if (employeesList.length === 0) { alert('Add employees first.'); return; }
     const tokens = generateTokens();
     localStorage.setItem('qrTokens', JSON.stringify(tokens));
+    localStorage.setItem('qrBaseUrl', base); // Save base URL
     renderGrid(base, tokens);
   });
 
@@ -635,11 +639,20 @@ function initAdminPanel() {
     const saved = localStorage.getItem('qrTokens');
     if (!saved) { alert('No tokens generated yet. Click "Generate Tokens" first.'); return; }
     const tokens = JSON.parse(saved);
+    localStorage.setItem('qrBaseUrl', base); // Save base URL
     renderGrid(base, tokens);
   });
 
   document.getElementById('printSheet').addEventListener('click', () => window.print());
   document.getElementById('downloadCSV').addEventListener('click', downloadCSV);
+  
+  document.getElementById('resetQRCodes').addEventListener('click', () => {
+    if (confirm('⚠️ Are you sure you want to reset all QR codes?\n\nThis will:\n- Delete all existing QR codes\n- Clear all tokens\n- Require generating new QR codes\n\nContinue?')) {
+      localStorage.removeItem('qrTokens');
+      document.getElementById('qrGrid').innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">QR codes cleared. Click "Generate Tokens" to create new ones.</p>';
+      alert('✓ QR codes reset successfully!');
+    }
+  });
 
   // Picks management handlers
   document.getElementById('adminRefreshPicks').addEventListener('click', async () => {
@@ -769,6 +782,27 @@ function removeEmployee(index) {
     employeesList.splice(index, 1);
     saveEmployees(employeesList);
     renderEmployeesList();
+  }
+}
+
+function autoLoadQRCodes() {
+  const saved = localStorage.getItem('qrTokens');
+  if (saved) {
+    try {
+      const tokens = JSON.parse(saved);
+      // Check if we have a base URL saved or use current URL
+      const savedUrl = localStorage.getItem('qrBaseUrl');
+      const baseUrl = savedUrl || (window.location.origin + window.location.pathname);
+      
+      // Set the base URL in the input
+      document.getElementById('baseUrl').value = baseUrl;
+      
+      // Render the QR codes
+      renderGrid(baseUrl, tokens);
+      console.log('✓ Auto-loaded existing QR codes');
+    } catch (err) {
+      console.error('Failed to auto-load QR codes:', err);
+    }
   }
 }
 
