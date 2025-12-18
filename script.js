@@ -12,9 +12,9 @@ let githubConfig = {
 
 // EmailJS configuration
 let emailConfig = {
-  serviceId: null,
-  templateId: null,
-  publicKey: null,
+  serviceId: 'service_d7t2xfh',
+  templateId: 'template_10qda1m',
+  publicKey: 'bbItQ3TIl4hiwVHQI',
   recipientEmail: 'depace.newa@gmail.com'
 };
 
