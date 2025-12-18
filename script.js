@@ -262,6 +262,60 @@ async function loadPicksFromStorage() {
   return localPicks;
 }
 
+// Check if a token has been used (from GitHub)
+async function checkIfTokenUsed(token) {
+  try {
+    loadGithubConfig();
+    if (!githubConfig.token || !githubConfig.username || !githubConfig.repo) {
+      console.log('GitHub not configured, checking localStorage only');
+      return false;
+    }
+    
+    const usedTokens = await githubApiCall('GET', 'used-tokens.json');
+    if (usedTokens && Array.isArray(usedTokens)) {
+      const isUsed = usedTokens.some(t => t.token === token);
+      console.log(`Token ${token} ${isUsed ? 'IS' : 'is NOT'} used (from GitHub)`);
+      return isUsed;
+    }
+    return false;
+  } catch (err) {
+    console.log('Could not check used tokens from GitHub:', err.message);
+    return false;
+  }
+}
+
+// Mark token as used in GitHub
+async function markTokenAsUsed(token, employee) {
+  try {
+    loadGithubConfig();
+    if (!githubConfig.token || !githubConfig.username || !githubConfig.repo) {
+      console.log('GitHub not configured, token only marked locally');
+      return false;
+    }
+    
+    // Get current used tokens
+    let usedTokens = await githubApiCall('GET', 'used-tokens.json');
+    if (!usedTokens || !Array.isArray(usedTokens)) {
+      usedTokens = [];
+    }
+    
+    // Add this token
+    usedTokens.push({
+      token: token,
+      employee: employee,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Save back to GitHub
+    await githubApiCall('PUT', 'used-tokens.json', usedTokens);
+    console.log('✓ Token marked as used in GitHub:', token);
+    return true;
+  } catch (err) {
+    console.error('Failed to mark token as used in GitHub:', err.message);
+    return false;
+  }
+}
+
 // Save picks to GitHub and localStorage
 async function savePicksToStorage(picks) {
   console.log('=== savePicksToStorage called ===');
@@ -918,10 +972,14 @@ async function initWheelApp() {
   // Prepare inverse map to grey out receivers
   assignedReceivers = Object.fromEntries(Object.entries(assignments).map(([giver, receiver]) => [receiver, giver]));
 
-  // One-time check for token
-  if (localStorage.getItem(`spunToken:${qrToken}`) === 'true') {
+  // One-time check for token - check both localStorage AND GitHub
+  const isUsedLocally = localStorage.getItem(`spunToken:${qrToken}`) === 'true';
+  const isUsedInGithub = await checkIfTokenUsed(qrToken);
+  
+  if (isUsedLocally || isUsedInGithub) {
     document.getElementById('startSpin').disabled = true;
-    document.getElementById('resultText').innerText = 'This QR has already been used to spin.';
+    document.getElementById('resultText').innerText = 'This QR has already been used to spin. Each QR code can only be used once.';
+    document.getElementById('resultText').style.color = 'red';
   } else {
     // Build wheel immediately (synchronous, fast)
     buildWheel();
@@ -1123,8 +1181,12 @@ async function attemptAssignment(selectedName) {
   console.log('QR Token:', qrToken);
   
   if (qrToken) {
+    // Mark as used locally
     localStorage.setItem(`spunToken:${qrToken}`, 'true');
-    console.log('Token marked as used:', qrToken);
+    console.log('Token marked as used locally:', qrToken);
+    
+    // Mark as used in GitHub (cross-device)
+    await markTokenAsUsed(qrToken, currentEmployee);
   } else {
     localStorage.setItem(`spun:${currentEmployee}`, 'true');
     console.log('Employee marked as spun:', currentEmployee);
