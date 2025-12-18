@@ -665,6 +665,32 @@ function initAdminPanel() {
     }
   });
 
+  document.getElementById('adminResetAssignments').addEventListener('click', async () => {
+    if (confirm('⚠️ WARNING: This will regenerate the closed-loop assignments.\n\nOnly do this if:\n- You added/removed employees\n- There are duplicate picks\n- You need to restart the gift exchange\n\nThis will NOT clear existing picks. Continue?')) {
+      try {
+        // Clear localStorage
+        localStorage.removeItem('closedLoopAssignments');
+        
+        // Clear GitHub
+        loadGithubConfig();
+        if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+          const emptyData = {
+            assignments: {},
+            employees: [],
+            createdAt: null,
+            totalEmployees: 0
+          };
+          await githubApiCall('PUT', 'assignments.json', emptyData);
+          alert('✓ Assignments reset! New assignments will be generated when the next person spins.');
+        } else {
+          alert('✓ Local assignments cleared. Configure GitHub to sync across all devices.');
+        }
+      } catch (err) {
+        alert('Error resetting assignments: ' + err.message);
+      }
+    }
+  });
+
   // Load and display picks on admin login
   loadPicksFromStorage().then(picks => {
     renderAdminPicksList(picks);
@@ -942,32 +968,10 @@ async function initWheelApp() {
   // Display employee name
   document.getElementById('employeeName').textContent = currentEmployee;
 
-  // Build local closed-loop mapping and store to localStorage (if not exists)
-  const saved = localStorage.getItem('closedLoopAssignments');
-  let needsRegeneration = false;
-  
-  if (saved) {
-    assignments = JSON.parse(saved);
-    
-    // Check if all current employees are in the assignments
-    const assignedEmployees = new Set(Object.keys(assignments));
-    const currentEmployees = new Set(employees);
-    
-    // If any employee is missing or extra employees exist, regenerate
-    if (assignedEmployees.size !== currentEmployees.size || 
-        !employees.every(emp => assignedEmployees.has(emp))) {
-      console.log('Employee list changed, regenerating closed-loop assignments');
-      needsRegeneration = true;
-    }
-  } else {
-    needsRegeneration = true;
-  }
-  
-  if (needsRegeneration) {
-    assignments = generateClosedLoop(employees);
-    localStorage.setItem('closedLoopAssignments', JSON.stringify(assignments));
-    console.log('New assignments generated:', assignments);
-  }
+  // Load closed-loop assignments from GitHub (master source)
+  console.log('Loading closed-loop assignments...');
+  assignments = await loadClosedLoopAssignments(employees);
+  console.log('Assignments loaded:', assignments);
 
   // Prepare inverse map to grey out receivers
   assignedReceivers = Object.fromEntries(Object.entries(assignments).map(([giver, receiver]) => [receiver, giver]));
@@ -1213,6 +1217,76 @@ async function attemptAssignment(selectedName) {
   return;
 }
 
+// Load closed-loop assignments from GitHub, or generate if not exists
+async function loadClosedLoopAssignments(employeeList) {
+  try {
+    loadGithubConfig();
+    
+    // Try to load from GitHub first (master source)
+    if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+      const stored = await githubApiCall('GET', 'assignments.json');
+      
+      if (stored && stored.assignments && stored.employees) {
+        // Validate that stored assignments match current employee list
+        const storedEmployees = new Set(stored.employees);
+        const currentEmployees = new Set(employeeList);
+        
+        // Check if employee lists match
+        const listsMatch = 
+          storedEmployees.size === currentEmployees.size &&
+          [...storedEmployees].every(emp => currentEmployees.has(emp));
+        
+        if (listsMatch) {
+          console.log('✓ Using existing assignments from GitHub');
+          return stored.assignments;
+        } else {
+          console.log('⚠ Employee list changed, need to regenerate assignments');
+        }
+      }
+    }
+  } catch (err) {
+    console.log('Could not load assignments from GitHub:', err.message);
+  }
+  
+  // Generate new assignments
+  console.log('Generating new closed-loop assignments for', employeeList.length, 'employees');
+  const newAssignments = generateClosedLoop(employeeList);
+  
+  // Save to GitHub
+  await saveClosedLoopAssignments(newAssignments, employeeList);
+  
+  return newAssignments;
+}
+
+// Save closed-loop assignments to GitHub
+async function saveClosedLoopAssignments(assignments, employeeList) {
+  try {
+    loadGithubConfig();
+    
+    if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+      const data = {
+        assignments: assignments,
+        employees: employeeList,
+        createdAt: new Date().toISOString(),
+        totalEmployees: employeeList.length
+      };
+      
+      await githubApiCall('PUT', 'assignments.json', data);
+      console.log('✓ Assignments saved to GitHub');
+      
+      // Also save to localStorage as backup
+      localStorage.setItem('closedLoopAssignments', JSON.stringify(data));
+    } else {
+      console.log('GitHub not configured, saving locally only');
+      localStorage.setItem('closedLoopAssignments', JSON.stringify({ assignments, employees: employeeList }));
+    }
+  } catch (err) {
+    console.error('Failed to save assignments:', err.message);
+    // Fallback to localStorage
+    localStorage.setItem('closedLoopAssignments', JSON.stringify({ assignments, employees: employeeList }));
+  }
+}
+
 // Create a single closed loop (cycle) over all employees
 function generateClosedLoop(list) {
   const order = shuffleArray(list);
@@ -1222,6 +1296,18 @@ function generateClosedLoop(list) {
     const receiver = order[(i + 1) % order.length];
     map[giver] = receiver;
   }
+  
+  // Validate the closed loop
+  console.log('Generated closed loop:');
+  let current = order[0];
+  const chain = [current];
+  for (let i = 0; i < list.length - 1; i++) {
+    current = map[current];
+    chain.push(current);
+  }
+  console.log('Chain:', chain.join(' → '));
+  console.log('Forms complete loop:', map[current] === order[0]);
+  
   return map;
 }
 
