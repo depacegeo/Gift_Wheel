@@ -627,6 +627,41 @@ function initAdminPanel() {
     }
   });
 
+  // Sync employees from GitHub
+  document.getElementById('syncEmployeesBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('syncEmployeesBtn');
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Syncing...';
+    btn.disabled = true;
+    
+    try {
+      // Reload from employees.json file
+      employeesList = await loadEmployees();
+      renderEmployeesList();
+      btn.textContent = '✓ Synced!';
+      btn.style.background = '#4CAF50';
+      alert(`✓ Successfully synced ${employeesList.length} employees from employees.json`);
+      
+      // Reset button after 2 seconds
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }, 2000);
+    } catch (err) {
+      console.error('Sync failed:', err);
+      btn.textContent = '✗ Failed';
+      btn.style.background = '#f44336';
+      alert('Failed to sync employees: ' + err.message);
+      
+      // Reset button after 2 seconds
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.style.background = '#4CAF50';
+        btn.disabled = false;
+      }, 2000);
+    }
+  });
+
   // Base URL handling
   document.getElementById('loadDefaultUrl').addEventListener('click', () => {
     const loc = window.location;
