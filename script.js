@@ -904,14 +904,10 @@ function renderGrid(baseUrl, tokens) {
     card.className = 'card print-area';
     const title = document.createElement('h3');
     title.textContent = name;
-    const urlEl = document.createElement('div');
-    urlEl.className = 'url';
-    urlEl.textContent = url;
     const qrEl = document.createElement('div');
     qrEl.style.margin = '8px auto';
     card.appendChild(title);
     card.appendChild(qrEl);
-    card.appendChild(urlEl);
     grid.appendChild(card);
     new QRCode(qrEl, { text: url, width: 180, height: 180 });
   });
