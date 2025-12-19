@@ -1,5 +1,10 @@
+// === CLEAR LOCALSTORAGE ON PAGE LOAD ===
+// This ensures fresh data is loaded from JSON files every time
+console.log('🧹 Clearing localStorage...');
+localStorage.clear();
+console.log('✓ localStorage cleared');
+
 // === CONFIGURATION ===
-//const DEFAULT_EMPLOYEES = ["Dipesh", "Safala", "Pramada", "Bikram", "Seren", "Neerjara", "Laxmi", "Suraj", "Dinesh", "Rojin", "Prabin", "Muna", "Jenisha", "Luzala", "Princika", "Aruna", "Monika", "Ronika", "Gagan", "Rahish","Saleel", "Amit Kumar", "Soniya"];
 const ADMIN_USER = 'geovest';
 const ADMIN_PASS = 'geovestdec25';
 
