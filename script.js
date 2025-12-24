@@ -1034,18 +1034,58 @@ async function autoLoadQRCodes() {
   // Load from GitHub first (master source), fallback to localStorage
   const tokenData = await loadTokensFromGithub();
   
+  // Set the base URL
+  const baseUrl = (tokenData && tokenData.baseUrl) || (window.location.origin + window.location.pathname);
+  document.getElementById('baseUrl').value = baseUrl;
+  
   if (tokenData && tokenData.tokens && Object.keys(tokenData.tokens).length > 0) {
-    const baseUrl = tokenData.baseUrl || (window.location.origin + window.location.pathname);
-    
-    // Set the base URL in the input
-    document.getElementById('baseUrl').value = baseUrl;
-    
-    // Render the QR codes
+    // Render the QR codes (includes START PICKER)
     renderGrid(baseUrl, tokenData.tokens);
     console.log('✓ Auto-loaded existing QR codes from GitHub');
   } else {
-    console.log('No existing QR codes found');
+    // No tokens yet - show at least the START PICKER QR code
+    console.log('No existing employee tokens found, showing START PICKER only');
+    renderStartPickerOnly(baseUrl);
   }
+}
+
+function renderStartPickerOnly(baseUrl) {
+  const grid = document.getElementById('qrGrid');
+  grid.innerHTML = '';
+  
+  // Add START PICKER card
+  const startPickerUrl = `${baseUrl}?mode=start`;
+  const startCard = document.createElement('div');
+  startCard.className = 'card print-area';
+  startCard.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+  startCard.style.color = 'white';
+  startCard.style.border = '3px solid #fff';
+  const startTitle = document.createElement('h3');
+  startTitle.textContent = '🎯 START PICKER';
+  startTitle.style.color = 'white';
+  startTitle.style.fontSize = '18px';
+  startTitle.style.fontWeight = 'bold';
+  const startDesc = document.createElement('div');
+  startDesc.textContent = 'Spin to pick who goes first!';
+  startDesc.style.fontSize = '12px';
+  startDesc.style.marginBottom = '8px';
+  startDesc.style.color = '#f0f0f0';
+  const startQrEl = document.createElement('div');
+  startQrEl.style.margin = '8px auto';
+  startQrEl.style.background = 'white';
+  startQrEl.style.padding = '8px';
+  startQrEl.style.borderRadius = '8px';
+  startCard.appendChild(startTitle);
+  startCard.appendChild(startDesc);
+  startCard.appendChild(startQrEl);
+  grid.appendChild(startCard);
+  new QRCode(startQrEl, { text: startPickerUrl, width: 180, height: 180 });
+  
+  // Add a helpful message
+  const messageDiv = document.createElement('div');
+  messageDiv.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 20px; background: #fff3cd; border-radius: 8px; margin-top: 10px;';
+  messageDiv.innerHTML = '<strong>ℹ️ No employee tokens generated yet.</strong><br>Click "Generate Tokens" to create QR codes for all employees.';
+  grid.appendChild(messageDiv);
 }
 
 function generateTokens() {
