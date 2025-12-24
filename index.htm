@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Christmas Gift Picker</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.1.3/TweenMax.min.js"></script>
@@ -232,7 +235,10 @@
   <div class="panel hidden" id="adminPanel">
     <div class="row" style="justify-content: space-between; margin-bottom: 20px;">
       <h2 style="margin: 0;">Admin Panel</h2>
-      <button id="logoutBtn">Logout</button>
+      <div class="row" style="gap: 8px;">
+        <button id="clearCacheBtn" style="background: #ff9800;">🗑️ Clear Cache & Reload</button>
+        <button id="logoutBtn">Logout</button>
+      </div>
     </div>
 
     <!-- EMAIL NOTIFICATION SECTION -->

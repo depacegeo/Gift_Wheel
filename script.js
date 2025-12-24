@@ -1,8 +1,17 @@
-// === CLEAR LOCALSTORAGE ON PAGE LOAD ===
-// This ensures fresh data is loaded from JSON files every time
-console.log('🧹 Clearing localStorage...');
-localStorage.clear();
-console.log('✓ localStorage cleared');
+// === APP VERSION & CACHE MANAGEMENT ===
+const APP_VERSION = '1.0.1'; // Increment this to force cache refresh
+
+// Check version and clear cache if outdated
+const savedVersion = localStorage.getItem('appVersion');
+if (savedVersion !== APP_VERSION) {
+  console.log(`🔄 Version updated: ${savedVersion || 'none'} → ${APP_VERSION}`);
+  console.log('🧹 Clearing old cache...');
+  localStorage.clear();
+  localStorage.setItem('appVersion', APP_VERSION);
+  console.log('✓ Cache cleared for new version');
+} else {
+  console.log(`✓ App version ${APP_VERSION} - cache OK`);
+}
 
 // === CONFIGURATION ===
 const ADMIN_USER = 'geovest';
@@ -624,6 +633,45 @@ function initAdminApp() {
     document.getElementById('loginMsg').textContent = '';
     document.getElementById('qrGrid').innerHTML = '';
   });
+
+  document.getElementById('clearCacheBtn').addEventListener('click', () => {
+    if (confirm('Clear all cached data and reload the page?')) {
+      clearAllCache();
+    }
+  });
+}
+
+function clearAllCache() {
+  console.log('Clearing all cache...');
+  
+  // Clear localStorage
+  const keysToKeep = [];
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    keysToRemove.push(key);
+  }
+  keysToRemove.forEach(key => localStorage.removeItem(key));
+  console.log(`✓ Cleared ${keysToRemove.length} localStorage items`);
+  
+  // Clear sessionStorage
+  sessionStorage.clear();
+  console.log('✓ Cleared sessionStorage');
+  
+  // Clear service worker caches if available
+  if ('caches' in window) {
+    caches.keys().then(names => {
+      names.forEach(name => caches.delete(name));
+      console.log('✓ Cleared service worker caches');
+    });
+  }
+  
+  // Add timestamp to force reload
+  const url = new URL(window.location.href);
+  url.searchParams.set('_t', Date.now());
+  
+  alert('Cache cleared! The page will reload now.');
+  window.location.href = url.toString();
 }
 
 function initAdminPanel() {
