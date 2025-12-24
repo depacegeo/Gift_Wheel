@@ -144,7 +144,23 @@ async function githubApiCall(method, path, data = null, retries = 2) {
         if (response.status === 404) return null;
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`GitHub API error ${response.status}: ${errorText}`);
+          let errorDetails;
+          try {
+            errorDetails = JSON.parse(errorText);
+          } catch {
+            errorDetails = { message: errorText };
+          }
+          
+          // Provide helpful error messages
+          let helpfulMessage = `GitHub API error ${response.status}`;
+          if (response.status === 403) {
+            helpfulMessage += ' - Token may be invalid or lack "repo" permissions';
+          } else if (response.status === 401) {
+            helpfulMessage += ' - Authentication failed';
+          }
+          helpfulMessage += ': ' + (errorDetails.message || errorText);
+          
+          throw new Error(helpfulMessage);
         }
         const file = await response.json();
         return JSON.parse(atob(file.content));
@@ -172,7 +188,31 @@ async function githubApiCall(method, path, data = null, retries = 2) {
         
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`GitHub API error ${response.status}: ${errorText}`);
+          let errorDetails;
+          try {
+            errorDetails = JSON.parse(errorText);
+          } catch {
+            errorDetails = { message: errorText };
+          }
+          
+          // Provide helpful error messages for common issues
+          let helpfulMessage = `GitHub API error ${response.status}`;
+          if (response.status === 403) {
+            helpfulMessage += '\n\nPossible causes:\n' +
+              '1. Invalid or expired GitHub token\n' +
+              '2. Token lacks required permissions (needs "repo" scope)\n' +
+              '3. Rate limit exceeded\n' +
+              '4. Repository access denied\n\n' +
+              'Solution: Generate a new Personal Access Token with "repo" permissions at:\n' +
+              'https://github.com/settings/tokens';
+          } else if (response.status === 401) {
+            helpfulMessage += '\n\nAuthentication failed. Please check your GitHub token.';
+          } else if (response.status === 404) {
+            helpfulMessage += '\n\nRepository not found. Please check username and repository name.';
+          }
+          
+          helpfulMessage += '\n\nDetails: ' + (errorDetails.message || errorText);
+          throw new Error(helpfulMessage);
         }
         
         console.log(`✓ GitHub API ${method} ${path} successful on attempt ${attempt}`);
@@ -375,6 +415,100 @@ async function savePicksToStorage(picks) {
   }
 }
 
+// Save QR tokens to GitHub (master source) and localStorage (cache)
+async function saveTokensToGithub(tokens, baseUrl) {
+  console.log('=== saveTokensToGithub called ===');
+  
+  if (!tokens || typeof tokens !== 'object') {
+    console.error('saveTokensToGithub called with invalid data:', tokens);
+    return false;
+  }
+  
+  // Save to localStorage as cache for faster loading
+  localStorage.setItem('qrTokens', JSON.stringify(tokens));
+  localStorage.setItem('qrBaseUrl', baseUrl);
+  console.log('✓ Tokens cached in localStorage');
+  
+  // Save to GitHub as master source
+  loadGithubConfig();
+  if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+    try {
+      console.log('Saving tokens to GitHub...');
+      const tokenData = {
+        tokens: tokens,
+        baseUrl: baseUrl,
+        lastUpdated: new Date().toISOString(),
+        employeeCount: Object.keys(tokens).length
+      };
+      await githubApiCall('PUT', 'qr-tokens.json', tokenData);
+      console.log('✓✓✓ TOKENS SYNCED TO GITHUB SUCCESSFULLY ✓✓✓');
+      return true;
+    } catch (err) {
+      console.error('✗ Failed to sync tokens to GitHub:', err.message);
+      alert('Warning: Tokens saved locally but failed to sync to GitHub. QR codes may differ across browsers.');
+      return false;
+    }
+  } else {
+    console.warn('GitHub not configured. Tokens saved locally only.');
+    alert('Warning: GitHub not configured. QR codes may differ across browsers. Please configure GitHub in settings.');
+    return false;
+  }
+}
+
+// Load QR tokens from GitHub (master source) with localStorage fallback
+async function loadTokensFromGithub() {
+  console.log('=== loadTokensFromGithub called ===');
+  
+  // Always reload config
+  loadGithubConfig();
+  
+  // Try loading from GitHub first (master source)
+  if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+    try {
+      console.log('Loading tokens from GitHub...');
+      const tokenData = await githubApiCall('GET', 'qr-tokens.json');
+      
+      if (tokenData && tokenData.tokens) {
+        console.log('✓ Tokens loaded from GitHub (master source)');
+        
+        // Update localStorage cache
+        localStorage.setItem('qrTokens', JSON.stringify(tokenData.tokens));
+        if (tokenData.baseUrl) {
+          localStorage.setItem('qrBaseUrl', tokenData.baseUrl);
+        }
+        
+        return {
+          tokens: tokenData.tokens,
+          baseUrl: tokenData.baseUrl || ''
+        };
+      }
+    } catch (err) {
+      console.log('Could not load tokens from GitHub:', err.message);
+    }
+  }
+  
+  // Fallback to localStorage
+  console.log('Falling back to localStorage...');
+  const savedTokens = localStorage.getItem('qrTokens');
+  const savedUrl = localStorage.getItem('qrBaseUrl');
+  
+  if (savedTokens) {
+    try {
+      const tokens = JSON.parse(savedTokens);
+      console.log('✓ Tokens loaded from localStorage (fallback)');
+      return {
+        tokens: tokens,
+        baseUrl: savedUrl || ''
+      };
+    } catch (err) {
+      console.error('Failed to parse localStorage tokens:', err);
+    }
+  }
+  
+  console.log('No tokens found in GitHub or localStorage');
+  return null;
+}
+
 let employeesList = [];
 
 // Shuffle function
@@ -396,6 +530,7 @@ const qrToken = params.get('code');
 const qrEmployee = params.get('employee');
 const ghParam = params.get('gh');
 const emParam = params.get('em');
+const startMode = params.get('mode');
 
 // If GitHub config is in URL (QR scan on mobile), load it
 if (ghParam) {
@@ -446,7 +581,10 @@ if (emParam) {
 loadEmployees().then(list => {
   employeesList = list;
   
-  if (qrToken && qrEmployee) {
+  if (startMode === 'start') {
+    // Start Picker mode: show wheel with all participants
+    initStartPickerMode();
+  } else if (qrToken && qrEmployee) {
     // QR mode: show rules first
     initRulesPanel();
   } else {
@@ -570,17 +708,30 @@ function initAdminPanel() {
 
   document.getElementById('testGithubConnection').addEventListener('click', async () => {
     const statusEl = document.getElementById('githubStatus');
-    statusEl.textContent = 'Testing...';
+    statusEl.textContent = 'Testing connection...';
     statusEl.style.color = 'blue';
 
     try {
       loadGithubConfig();
+      
+      // First test: Check if we can read from the repo
+      statusEl.textContent = 'Step 1/2: Testing read access...';
       await githubApiCall('GET', 'employees.json');
-      statusEl.textContent = '✓ Connection successful!';
+      
+      // Second test: Check if we can write to the repo
+      statusEl.textContent = 'Step 2/2: Testing write access...';
+      const testData = { test: true, timestamp: new Date().toISOString() };
+      await githubApiCall('PUT', 'connection-test.json', testData);
+      
+      statusEl.textContent = '✓ Connection successful! Read and write permissions verified.';
       statusEl.style.color = 'green';
     } catch (err) {
+      console.error('GitHub connection test failed:', err);
       statusEl.textContent = '✗ Connection failed: ' + err.message;
       statusEl.style.color = 'red';
+      
+      // Show detailed error in console for debugging
+      console.error('Full error details:', err);
     }
   });
 
@@ -675,32 +826,64 @@ function initAdminPanel() {
   });
 
   // Token generation
-  document.getElementById('generateTokens').addEventListener('click', () => {
+  document.getElementById('generateTokens').addEventListener('click', async () => {
     const base = baseUrlInput.value.trim();
     if (!base) { alert('Enter base URL to generate.'); return; }
     if (employeesList.length === 0) { alert('Add employees first.'); return; }
+    
     const tokens = generateTokens();
-    localStorage.setItem('qrTokens', JSON.stringify(tokens));
-    localStorage.setItem('qrBaseUrl', base); // Save base URL
+    
+    // Save to GitHub and localStorage
+    const saved = await saveTokensToGithub(tokens, base);
+    if (saved) {
+      console.log('✓ Tokens synced to GitHub - will be consistent across all browsers');
+    } else {
+      console.warn('⚠ Tokens saved locally only - may differ across browsers');
+    }
+    
     renderGrid(base, tokens);
   });
 
-  document.getElementById('reuseTokens').addEventListener('click', () => {
+  document.getElementById('reuseTokens').addEventListener('click', async () => {
     const base = baseUrlInput.value.trim();
     if (!base) { alert('Enter base URL to render.'); return; }
-    const saved = localStorage.getItem('qrTokens');
-    if (!saved) { alert('No tokens generated yet. Click "Generate Tokens" first.'); return; }
-    const tokens = JSON.parse(saved);
-    localStorage.setItem('qrBaseUrl', base); // Save base URL
-    renderGrid(base, tokens);
+    
+    // Load from GitHub first, fallback to localStorage
+    const tokenData = await loadTokensFromGithub();
+    
+    if (!tokenData || !tokenData.tokens) {
+      alert('No tokens found. Click "Generate Tokens" first.');
+      return;
+    }
+    
+    // If baseUrl changed, update GitHub
+    if (tokenData.baseUrl !== base) {
+      await saveTokensToGithub(tokenData.tokens, base);
+    }
+    
+    renderGrid(base, tokenData.tokens);
   });
 
   document.getElementById('printSheet').addEventListener('click', () => window.print());
   document.getElementById('downloadCSV').addEventListener('click', downloadCSV);
   
-  document.getElementById('resetQRCodes').addEventListener('click', () => {
-    if (confirm('⚠️ Are you sure you want to reset all QR codes?\n\nThis will:\n- Delete all existing QR codes\n- Clear all tokens\n- Require generating new QR codes\n\nContinue?')) {
+  document.getElementById('resetQRCodes').addEventListener('click', async () => {
+    if (confirm('⚠️ Are you sure you want to reset all QR codes?\n\nThis will:\n- Delete all existing QR codes\n- Clear all tokens (from GitHub and locally)\n- Require generating new QR codes\n\nContinue?')) {
+      // Clear localStorage
       localStorage.removeItem('qrTokens');
+      localStorage.removeItem('qrBaseUrl');
+      
+      // Clear GitHub
+      loadGithubConfig();
+      if (githubConfig.token && githubConfig.username && githubConfig.repo) {
+        try {
+          await githubApiCall('PUT', 'qr-tokens.json', { tokens: {}, baseUrl: '', lastUpdated: new Date().toISOString() });
+          console.log('✓ QR tokens cleared from GitHub');
+        } catch (err) {
+          console.error('Failed to clear tokens from GitHub:', err.message);
+        }
+      }
+      
       document.getElementById('qrGrid').innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">QR codes cleared. Click "Generate Tokens" to create new ones.</p>';
       alert('✓ QR codes reset successfully!');
     }
@@ -845,24 +1028,23 @@ async function removeEmployee(index) {
   }
 }
 
-function autoLoadQRCodes() {
-  const saved = localStorage.getItem('qrTokens');
-  if (saved) {
-    try {
-      const tokens = JSON.parse(saved);
-      // Check if we have a base URL saved or use current URL
-      const savedUrl = localStorage.getItem('qrBaseUrl');
-      const baseUrl = savedUrl || (window.location.origin + window.location.pathname);
-      
-      // Set the base URL in the input
-      document.getElementById('baseUrl').value = baseUrl;
-      
-      // Render the QR codes
-      renderGrid(baseUrl, tokens);
-      console.log('✓ Auto-loaded existing QR codes');
-    } catch (err) {
-      console.error('Failed to auto-load QR codes:', err);
-    }
+async function autoLoadQRCodes() {
+  console.log('Auto-loading QR codes from GitHub...');
+  
+  // Load from GitHub first (master source), fallback to localStorage
+  const tokenData = await loadTokensFromGithub();
+  
+  if (tokenData && tokenData.tokens && Object.keys(tokenData.tokens).length > 0) {
+    const baseUrl = tokenData.baseUrl || (window.location.origin + window.location.pathname);
+    
+    // Set the base URL in the input
+    document.getElementById('baseUrl').value = baseUrl;
+    
+    // Render the QR codes
+    renderGrid(baseUrl, tokenData.tokens);
+    console.log('✓ Auto-loaded existing QR codes from GitHub');
+  } else {
+    console.log('No existing QR codes found');
   }
 }
 
@@ -913,10 +1095,16 @@ function renderGrid(baseUrl, tokens) {
   });
 }
 
-function downloadCSV() {
-  const saved = localStorage.getItem('qrTokens');
-  if (!saved) { alert('No tokens generated yet.'); return; }
-  const tokens = JSON.parse(saved);
+async function downloadCSV() {
+  // Load from GitHub first, fallback to localStorage
+  const tokenData = await loadTokensFromGithub();
+  
+  if (!tokenData || !tokenData.tokens) {
+    alert('No tokens generated yet.');
+    return;
+  }
+  
+  const tokens = tokenData.tokens;
   const rows = ['Employee,Token'];
   Object.keys(tokens).forEach(name => rows.push(`${name},${tokens[name]}`));
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -944,6 +1132,113 @@ let nameScrollInterval = null;
 let pickLogs = []; // array of { timeISO, giver, receiver }
 
 // Show rules modal popup when QR is scanned
+// ===== START PICKER MODE =====
+function initStartPickerMode() {
+  console.log('initStartPickerMode called');
+  
+  // Hide login and admin panels, show wheel
+  document.getElementById('loginBox').classList.add('hidden');
+  document.getElementById('adminPanel').classList.add('hidden');
+  document.getElementById('wheelPanel').classList.remove('hidden');
+
+  // Set up the UI for start picker
+  document.getElementById('employeeName').textContent = '🎯 Who goes first?';
+  document.getElementById('qrError').textContent = '';
+  
+  // Use all employees for the wheel (shuffled for visual variety)
+  const allParticipants = shuffleArray([...employeesList]);
+  
+  // Create segments for the wheel
+  const segments = allParticipants.map((name, index) => ({
+    fillStyle: getSegmentColor(index, allParticipants.length),
+    text: name
+  }));
+  
+  // Create the wheel
+  if (typeof Winwheel === 'undefined') {
+    console.error('Winwheel library not loaded');
+    document.getElementById('qrError').textContent = 'Error: Wheel library not loaded. Please refresh the page.';
+    return;
+  }
+  
+  let theWheel = new Winwheel({
+    canvasId: "wheelCanvas",
+    numSegments: segments.length,
+    segments: segments,
+    animation: {
+      type: "spinToStop",
+      duration: 5,
+      spins: 8,
+      callbackFinished: (segment) => {
+        // Announce the result for start picker
+        const selectedName = segment.text;
+        const resultEl = document.getElementById('resultText');
+        resultEl.innerText = `🎉 ${selectedName} will start the gift exchange!`;
+        resultEl.style.color = '#667eea';
+        resultEl.style.fontSize = '24px';
+        resultEl.style.fontWeight = 'bold';
+        
+        // Re-enable button for another spin
+        const spinBtn = document.getElementById('startSpin');
+        spinBtn.disabled = false;
+        spinBtn.textContent = 'SPIN AGAIN';
+        
+        // Stop name display
+        const nameDisplay = document.getElementById('nameDisplay');
+        if (nameDisplay) {
+          nameDisplay.textContent = selectedName;
+          setTimeout(() => {
+            nameDisplay.style.display = 'none';
+          }, 3000);
+        }
+      },
+      callbackAfter: drawPointer
+    }
+  });
+  
+  // Draw pointer
+  drawPointer();
+  
+  // Enable the spin button
+  const spinBtn = document.getElementById('startSpin');
+  spinBtn.disabled = false;
+  spinBtn.textContent = 'SPIN THE WHEEL';
+  
+  // Add click handler for spinning
+  spinBtn.onclick = () => {
+    // Clear previous result
+    document.getElementById('resultText').textContent = '';
+    
+    spinBtn.disabled = true;
+    spinBtn.textContent = 'SPINNING...';
+    
+    // Start name scrolling animation
+    const nameDisplay = document.getElementById('nameDisplay');
+    if (nameDisplay) {
+      nameDisplay.style.display = 'block';
+      let scrollIndex = 0;
+      const scrollInterval = setInterval(() => {
+        nameDisplay.textContent = allParticipants[scrollIndex % allParticipants.length];
+        scrollIndex++;
+      }, 100);
+      
+      // Stop scrolling when wheel stops
+      setTimeout(() => {
+        clearInterval(scrollInterval);
+      }, 5000);
+    }
+    
+    // Pick a random winner
+    const randomDeg = Math.floor(Math.random() * 360) + 1440; // At least 4 full rotations
+    
+    theWheel.animation.stopAngle = randomDeg;
+    theWheel.startAnimation();
+  };
+  
+  // Ensure the wheel can spin multiple times - no token validation needed
+  console.log('Start Picker Mode initialized with', employeesList.length, 'participants');
+}
+
 function initRulesPanel() {
   console.log('initRulesPanel called');
   

@@ -123,6 +123,41 @@
     function renderGrid(baseUrl, tokens) {
       const grid = document.getElementById('qrGrid');
       grid.innerHTML = '';
+      
+      // Add special START PICKER card first
+      const startPickerUrl = `${baseUrl}?mode=start`;
+      const startCard = document.createElement('div');
+      startCard.className = 'card print-area';
+      startCard.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+      startCard.style.color = 'white';
+      startCard.style.border = '3px solid #fff';
+      const startTitle = document.createElement('h3');
+      startTitle.textContent = '🎯 START PICKER';
+      startTitle.style.color = 'white';
+      startTitle.style.fontSize = '18px';
+      startTitle.style.fontWeight = 'bold';
+      const startDesc = document.createElement('div');
+      startDesc.textContent = 'Spin to pick who goes first!';
+      startDesc.style.fontSize = '12px';
+      startDesc.style.marginBottom = '8px';
+      startDesc.style.color = '#f0f0f0';
+      const startUrlEl = document.createElement('div');
+      startUrlEl.className = 'url';
+      startUrlEl.textContent = startPickerUrl;
+      startUrlEl.style.color = '#e0e0e0';
+      const startQrEl = document.createElement('div');
+      startQrEl.style.margin = '8px auto';
+      startQrEl.style.background = 'white';
+      startQrEl.style.padding = '8px';
+      startQrEl.style.borderRadius = '8px';
+      startCard.appendChild(startTitle);
+      startCard.appendChild(startDesc);
+      startCard.appendChild(startQrEl);
+      startCard.appendChild(startUrlEl);
+      grid.appendChild(startCard);
+      new QRCode(startQrEl, { text: startPickerUrl, width: 180, height: 180 });
+      
+      // Add employee cards
       employees.forEach(name => {
         const token = tokens[name];
         const url = `${baseUrl}?code=${encodeURIComponent(token)}&employee=${encodeURIComponent(name)}`;
